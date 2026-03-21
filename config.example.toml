@@ -1,0 +1,48 @@
+# scape-ctl configuration
+# Location: `scape-ctl help` shows the path for your OS.
+
+[settings]
+
+# How often to poll the USB bus for device changes (milliseconds).
+# Minimum: 200. Default: 1000.
+poll_interval_ms = 1000
+
+# Show desktop notifications on connect/disconnect and config reload.
+notifications = true
+
+# Tray icon display mode: "black", "white", or "text".
+# "black" and "white" show the Scape icon (pick whichever suits your
+# menu bar theme). "text" shows a text label instead — see tray_text.
+# Changing between icon and text modes restarts the tray app.
+tray_display = "black"
+
+# Text shown in the menu bar when tray_display = "text".
+# Maximum 16 characters (longer strings are truncated).
+tray_text = "Scape"
+
+# ── Trigger scripts ──────────────────────────────────────────────
+#
+# Scripts that run automatically on device connect/disconnect.
+# Each trigger receives these environment variables:
+#
+#   SCAPE_EVENT     "Connected" or "Disconnected"
+#   SCAPE_DEVICE    Product name (e.g. "Fractal Scape Dongle")
+#   SCAPE_VID       Vendor ID in hex (e.g. "36bc")
+#   SCAPE_PID       Product ID in hex (e.g. "0001")
+#   SCAPE_PATH      OS device path
+#   SCAPE_TIMESTAMP ISO 8601 timestamp
+#   SCAPE_JSON      Full event as JSON
+#
+# Example triggers (uncomment to enable):
+
+# [[triggers]]
+# event   = "Connected"
+# script  = "notify-send 'Scape' 'Headset connected'"
+# label   = "Connect notification"
+# enabled = true
+
+# [[triggers]]
+# event   = "Disconnected"
+# script  = "notify-send 'Scape' 'Headset disconnected'"
+# label   = "Disconnect notification"
+# enabled = true

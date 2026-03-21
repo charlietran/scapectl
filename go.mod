@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/getlantern/systray v1.2.2
+	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/sstallion/go-hid v0.14.1
 )
 
