@@ -54,10 +54,10 @@ type Monitor struct {
 	known          map[string]hid.DeviceInfo // path → info
 	subs           []chan Event              // fan-out subscriber channels
 	running        bool
-	dev            *hid.Device // persistent HID connection
-	headsetOnline  bool        // last known headset power state
-	headsetChecked bool        // true after first status poll
-	pollCount      int         // tick counter for staggered operations
+	dev             *hid.Device // persistent HID connection
+	headsetOnline   bool        // last known headset power state
+	headsetChecked  bool        // true after first status poll
+	offlineCount    int         // consecutive offline reads for debouncing
 }
 
 // New creates a monitor that polls at the given interval.
@@ -274,17 +274,14 @@ func (m *Monitor) ensureConnected() {
 	m.dev = dev
 }
 
-// pollHeadset mirrors the web app polling sequence: 11 21 → f1 21 → keepalive.
-// The dongle poll (11 21) appears to prime the dongle for faster f1 21 response.
+// pollHeadset uses 11 21 for fast presence detection (instant dongle response),
+// then f1 21 for full status only when headset is online. Requires 3 consecutive
+// offline reads before reporting disconnect to avoid false triggers.
 func (m *Monitor) pollHeadset(dev *hid.Device) {
-	// Dongle poll first (matches web app sequence)
+	// Fast presence check via dongle poll (11 21) — responds instantly
 	rid, payload := hid.BuildDonglePoll()
-	dev.SendAndReceive(rid, payload, 100*time.Millisecond)
-
-	// Full headset status
-	status, err := dev.GetStatus()
+	resp, err := dev.SendAndReceive(rid, payload, 100*time.Millisecond)
 	if err != nil {
-		// Connection may have gone bad — close and reconnect next tick
 		m.mu.Lock()
 		if m.dev == dev {
 			m.dev.Close()
@@ -293,10 +290,8 @@ func (m *Monitor) pollHeadset(dev *hid.Device) {
 		m.mu.Unlock()
 		return
 	}
-	if status == nil {
-		dev.SendKeepalive()
-		return
-	}
+
+	online := len(resp) > 3 && resp[3] != 0
 
 	m.mu.Lock()
 	var devInfo hid.DeviceInfo
@@ -305,12 +300,22 @@ func (m *Monitor) pollHeadset(dev *hid.Device) {
 		break
 	}
 
-	// Emit power state change (including first poll)
-	if !m.headsetChecked || status.Connected != m.headsetOnline {
+	if online {
+		m.offlineCount = 0
+	} else {
+		m.offlineCount++
+	}
+
+	// Determine effective state: require 3 consecutive offline reads
+	// to confirm disconnect (debounce transient dongle responses)
+	effectiveOnline := online || m.offlineCount < 3
+
+	// Emit power state change
+	if !m.headsetChecked || effectiveOnline != m.headsetOnline {
 		m.headsetChecked = true
-		m.headsetOnline = status.Connected
+		m.headsetOnline = effectiveOnline
 		evtType := EventHeadsetPowerOn
-		if !status.Connected {
+		if !effectiveOnline {
 			evtType = EventHeadsetPowerOff
 		}
 		m.emit(Event{
@@ -319,17 +324,22 @@ func (m *Monitor) pollHeadset(dev *hid.Device) {
 			Timestamp: time.Now(),
 		})
 	}
-
-	// Emit periodic status for UI updates
-	if status.Connected {
-		m.emit(Event{
-			Type:      EventHeadsetStatus,
-			Device:    devInfo,
-			Status:    status,
-			Timestamp: time.Now(),
-		})
-	}
 	m.mu.Unlock()
+
+	// Full status poll only when headset is online
+	if effectiveOnline {
+		status, err := dev.GetStatus()
+		if err == nil && status != nil && status.Connected {
+			m.mu.Lock()
+			m.emit(Event{
+				Type:      EventHeadsetStatus,
+				Device:    devInfo,
+				Status:    status,
+				Timestamp: time.Now(),
+			})
+			m.mu.Unlock()
+		}
+	}
 
 	dev.SendKeepalive()
 }
