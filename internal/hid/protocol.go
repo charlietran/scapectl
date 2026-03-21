@@ -86,43 +86,6 @@ var (
 	CmdDSPApply         = [2]byte{0xA7, 0x07} // + driver
 )
 
-// ── Lighting modes ──────────────────────────────────
-// NOTE: lighting commands were not observed in the sniffer log.
-// These values are tentative — they may use a different command family.
-
-type LightingMode byte
-
-const (
-	LightOff            LightingMode = 0x00
-	LightStatic         LightingMode = 0x01
-	LightBreathing      LightingMode = 0x02
-	LightNorthernLights LightingMode = 0x03
-	LightSummerSky      LightingMode = 0x04
-	LightRadiantDawn    LightingMode = 0x05
-	LightCustom         LightingMode = 0xFF
-)
-
-func (m LightingMode) String() string {
-	switch m {
-	case LightOff:
-		return "Off"
-	case LightStatic:
-		return "Static"
-	case LightBreathing:
-		return "Breathing"
-	case LightNorthernLights:
-		return "Northern Lights"
-	case LightSummerSky:
-		return "Summer Sky"
-	case LightRadiantDawn:
-		return "Radiant Dawn"
-	case LightCustom:
-		return "Custom"
-	default:
-		return "Unknown"
-	}
-}
-
 // ── Data structures ─────────────────────────────────
 
 type ConnectionMode int
@@ -182,21 +145,6 @@ type EqPreset struct {
 	Bands []EqBand
 }
 
-type RGB struct {
-	R, G, B byte
-}
-
-type LightingConfig struct {
-	Mode       LightingMode
-	Color      RGB
-	Brightness byte // 0-100
-	Speed      byte // 0-100
-}
-
-type MicConfig struct {
-	NoiseCancellation bool
-	Sidetone          byte // 0-100
-}
 
 // ── Report builders ─────────────────────────────────
 //
@@ -273,10 +221,6 @@ func BuildSetBiquad(numDrivers, driver, band byte, coeffs BiquadCoeffs) (byte, [
 	return ReportID, buf
 }
 
-func BuildGetLighting() (byte, []byte) {
-	return buildCmd(CmdStatusPoll[:])
-}
-
 // BuildSetLightOn toggles RGB lighting on (slot 1) or off (slot 0).
 // Sends [0xA4, 0x04, slot] — the device's selectEffectSlot command.
 func BuildSetLightOn(on bool) (byte, []byte) {
@@ -289,12 +233,6 @@ func BuildSetLightOn(on bool) (byte, []byte) {
 	return ReportID, buf
 }
 
-func BuildSetLighting(cfg *LightingConfig) (byte, []byte) {
-	// Full lighting config requires a4 bulk transfer (theme upload).
-	// For simple on/off, use BuildSetLightOn instead.
-	return BuildSetLightOn(cfg.Mode != LightOff)
-}
-
 // BuildSetMNC toggles Microphone Noise Cancellation on or off.
 // Sends [0xF1, 0x36, 1/0].
 func BuildSetMNC(on bool) (byte, []byte) {
@@ -305,10 +243,6 @@ func BuildSetMNC(on bool) (byte, []byte) {
 		buf[2] = 0x01
 	}
 	return ReportID, buf
-}
-
-func BuildSetMic(cfg *MicConfig) (byte, []byte) {
-	return BuildSetMNC(cfg.NoiseCancellation)
 }
 
 // ── Report parsers ──────────────────────────────────
@@ -408,15 +342,3 @@ func ParsePresence(data []byte) bool {
 	return data[2] != 0
 }
 
-func ParseLighting(data []byte) *LightingConfig {
-	// TODO: lighting response format not yet observed
-	if len(data) < 7 {
-		return nil
-	}
-	return &LightingConfig{
-		Mode:       LightingMode(data[1]),
-		Brightness: data[2],
-		Speed:      data[3],
-		Color:      RGB{R: data[4], G: data[5], B: data[6]},
-	}
-}

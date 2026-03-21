@@ -274,34 +274,9 @@ func (d *Device) SendKeepalive() error {
 	return d.Send(rid, payload)
 }
 
-// GetLighting reads the current lighting configuration.
-func (d *Device) GetLighting() (*LightingConfig, error) {
-	rid, payload := BuildGetLighting()
-	resp, err := d.SendAndReceive(rid, payload, defaultTimeout)
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil {
-		return nil, nil
-	}
-	return ParseLighting(resp), nil
-}
-
-// SetLighting writes a lighting configuration to the device.
-func (d *Device) SetLighting(cfg *LightingConfig) error {
-	rid, payload := BuildSetLighting(cfg)
-	return d.Send(rid, payload)
-}
-
 // SetActiveEq switches which of the 3 EQ slots is active.
 func (d *Device) SetActiveEq(slot int) error {
 	rid, payload := BuildSetActiveEq(slot)
-	return d.Send(rid, payload)
-}
-
-// SetMic writes microphone settings.
-func (d *Device) SetMic(cfg *MicConfig) error {
-	rid, payload := BuildSetMic(cfg)
 	return d.Send(rid, payload)
 }
 
