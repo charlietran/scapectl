@@ -1,5 +1,5 @@
-scape-ctl
-scape-ctl-*
+/scape-ctl
+/scape-ctl-*
 *.exe
 go.sum
 tmp/
