@@ -1,0 +1,5 @@
+# /etc/udev/rules.d/50-fractal.rules
+# Allow non-root access to all Fractal Design USB HID devices.
+# Install: sudo cp 50-fractal.rules /etc/udev/rules.d/
+#          sudo udevadm control --reload-rules && sudo udevadm trigger
+SUBSYSTEMS=="usb*", ATTRS{idVendor}=="36bc", MODE="0666"

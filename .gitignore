@@ -1,0 +1,8 @@
+scape-ctl
+scape-ctl-*
+*.exe
+go.sum
+tmp/
+.DS_Store
+scape-hid-log-*.json
+.claude/settings.local.json
