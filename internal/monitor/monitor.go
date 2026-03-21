@@ -310,9 +310,19 @@ func (m *Monitor) pollHeadset(dev *hid.Device) {
 	// to confirm disconnect (debounce transient dongle responses)
 	effectiveOnline := online || m.offlineCount < 3
 
-	// Emit power state change
-	if !m.headsetChecked || effectiveOnline != m.headsetOnline {
+	// First poll: record state. Only emit HeadsetPowerOff (for tray UI),
+	// never HeadsetPowerOn (dongle reports stale "online" on first read).
+	if !m.headsetChecked {
 		m.headsetChecked = true
+		m.headsetOnline = effectiveOnline
+		if !effectiveOnline {
+			m.emit(Event{
+				Type:      EventHeadsetPowerOff,
+				Device:    devInfo,
+				Timestamp: time.Now(),
+			})
+		}
+	} else if effectiveOnline != m.headsetOnline {
 		m.headsetOnline = effectiveOnline
 		evtType := EventHeadsetPowerOn
 		if !effectiveOnline {
