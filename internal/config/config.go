@@ -34,8 +34,10 @@ type Config struct {
 }
 
 type Settings struct {
-	PollIntervalMS int  `json:"poll_interval_ms"`
-	Notifications  bool `json:"notifications"`
+	PollIntervalMS int    `json:"poll_interval_ms"`
+	Notifications  bool   `json:"notifications"`
+	TrayDisplay    string `json:"tray_display,omitempty"` // "black", "white", or "text" (default: "black")
+	TrayText       string `json:"tray_text,omitempty"`    // custom text when tray_display is "text" (default: "Scape")
 }
 
 type TriggerRule struct {

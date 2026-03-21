@@ -2,6 +2,7 @@
 package tray
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os/exec"
@@ -17,6 +18,12 @@ import (
 	"github.com/definitelygames/scape-ctl/internal/triggers"
 )
 
+//go:embed icons/black.png
+var iconBlack []byte
+
+//go:embed icons/white.png
+var iconWhite []byte
+
 // App holds the tray application state.
 type App struct {
 	cfg     *config.Config
@@ -27,14 +34,17 @@ type App struct {
 	mu      sync.Mutex
 
 	// Menu items
-	mStatus   *systray.MenuItem
-	mBattery  *systray.MenuItem
-	mEq       [3]*systray.MenuItem
-	mLightTog *systray.MenuItem
-	lightOn   bool
-	mConfig   *systray.MenuItem
-	mReload   *systray.MenuItem
-	mQuit     *systray.MenuItem
+	mStatus      *systray.MenuItem
+	mBattery     *systray.MenuItem
+	mEq          [3]*systray.MenuItem
+	mLightTog    *systray.MenuItem
+	lightOn      bool
+	mDispBlack   *systray.MenuItem
+	mDispWhite   *systray.MenuItem
+	mDispText    *systray.MenuItem
+	mConfigDir   *systray.MenuItem
+	mReload      *systray.MenuItem
+	mQuit        *systray.MenuItem
 }
 
 // New creates the tray app.
@@ -49,8 +59,8 @@ func New(cfg *config.Config, mon *monitor.Monitor, tr *triggers.Runner, events <
 
 // OnReady is called by systray when the tray icon is ready.
 func (a *App) OnReady() {
-	systray.SetTitle("Scape")
 	systray.SetTooltip("Scape Control")
+	a.applyDisplay()
 
 	// ── Status section ──
 	a.mStatus = systray.AddMenuItem("⊘ No device", "Connection status")
@@ -71,8 +81,15 @@ func (a *App) OnReady() {
 
 	systray.AddSeparator()
 
+	// ── Display ──
+	mDisp := systray.AddMenuItem("Tray Icon", "Change tray display")
+	a.mDispBlack = mDisp.AddSubMenuItem("Black Icon", "Black tray icon")
+	a.mDispWhite = mDisp.AddSubMenuItem("White Icon", "White tray icon")
+	a.mDispText = mDisp.AddSubMenuItem("Text", "Text label in tray")
+	a.updateDispCheck()
+
 	// ── Utility ──
-	a.mConfig = systray.AddMenuItem("Edit Config", "Open config file")
+	a.mConfigDir = systray.AddMenuItem("Open Config Folder", "Open config directory")
 	a.mReload = systray.AddMenuItem("Reload Config", "Reload config from disk")
 
 	systray.AddSeparator()
@@ -130,8 +147,14 @@ func (a *App) handleClicks() {
 			a.setEq(3)
 		case <-a.mLightTog.ClickedCh:
 			a.toggleLight()
-		case <-a.mConfig.ClickedCh:
-			a.openConfig()
+		case <-a.mDispBlack.ClickedCh:
+			a.setDisplay("black")
+		case <-a.mDispWhite.ClickedCh:
+			a.setDisplay("white")
+		case <-a.mDispText.ClickedCh:
+			a.setDisplay("text")
+		case <-a.mConfigDir.ClickedCh:
+			a.openConfigDir()
 		case <-a.mReload.ClickedCh:
 			a.reloadConfig()
 		case <-a.mQuit.ClickedCh:
@@ -287,24 +310,84 @@ func (a *App) reloadConfig() {
 	notify("Scape", fmt.Sprintf("Config reloaded (%d triggers)", len(cfg.Triggers)))
 }
 
-func (a *App) openConfig() {
-	path := config.Path()
+func (a *App) applyDisplay() {
+	a.mu.Lock()
+	mode := a.cfg.Settings.TrayDisplay
+	text := a.cfg.Settings.TrayText
+	a.mu.Unlock()
+
+	if mode == "" {
+		mode = "black"
+	}
+	if text == "" {
+		text = "Scape"
+	}
+
+	switch mode {
+	case "white":
+		systray.SetIcon(iconWhite)
+		systray.SetTitle("")
+	case "text":
+		systray.SetIcon(nil)
+		systray.SetTitle(text)
+	default: // "black"
+		systray.SetIcon(iconBlack)
+		systray.SetTitle("")
+	}
+}
+
+func (a *App) updateDispCheck() {
+	a.mu.Lock()
+	mode := a.cfg.Settings.TrayDisplay
+	a.mu.Unlock()
+	if mode == "" {
+		mode = "black"
+	}
+
+	a.mDispBlack.Uncheck()
+	a.mDispWhite.Uncheck()
+	a.mDispText.Uncheck()
+	switch mode {
+	case "white":
+		a.mDispWhite.Check()
+	case "text":
+		a.mDispText.Check()
+	default:
+		a.mDispBlack.Check()
+	}
+}
+
+func (a *App) setDisplay(mode string) {
+	a.mu.Lock()
+	a.cfg.Settings.TrayDisplay = mode
+	cfg := a.cfg
+	a.mu.Unlock()
+
+	a.applyDisplay()
+	a.updateDispCheck()
+
+	if err := config.Save(cfg); err != nil {
+		log.Printf("[tray] failed to save display setting: %v", err)
+	}
+}
+
+func (a *App) openConfigDir() {
+	dir := config.Dir()
 	config.EnsureExists()
 
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", path)
+		cmd = exec.Command("open", dir)
 	case "windows":
-		cmd = exec.Command("notepad", path)
+		cmd = exec.Command("explorer", dir)
 	default:
-		// Try xdg-open, fall back to showing path
-		cmd = exec.Command("xdg-open", path)
+		cmd = exec.Command("xdg-open", dir)
 	}
 
 	if err := cmd.Start(); err != nil {
-		log.Printf("[tray] failed to open config: %v", err)
-		log.Printf("[tray] config location: %s", path)
+		log.Printf("[tray] failed to open config dir: %v", err)
+		log.Printf("[tray] config location: %s", dir)
 	}
 }
 
