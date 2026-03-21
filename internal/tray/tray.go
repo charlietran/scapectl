@@ -36,6 +36,7 @@ type App struct {
 	mReceiver  *systray.MenuItem
 	mHeadset   *systray.MenuItem
 	mBattery   *systray.MenuItem
+	mEqParent  *systray.MenuItem
 	mEq        [3]*systray.MenuItem
 	mLightTog  *systray.MenuItem
 	lightOn    bool
@@ -71,6 +72,9 @@ func (a *App) OnReady() {
 	a.mHeadset = systray.AddMenuItem("", "Headset status")
 	a.mHeadset.Disable()
 	a.mHeadset.Hide()
+	a.mMicMute = systray.AddMenuItem("", "Mic mute status (hardware)")
+	a.mMicMute.Disable()
+	a.mMicMute.Hide()
 	a.mBattery = systray.AddMenuItem("", "Battery level")
 	a.mBattery.Disable()
 	a.mBattery.Hide()
@@ -78,18 +82,19 @@ func (a *App) OnReady() {
 	systray.AddSeparator()
 
 	// ── EQ presets ──
-	mEqParent := systray.AddMenuItem("EQ Preset", "Switch EQ")
-	a.mEq[0] = mEqParent.AddSubMenuItem("Slot 1", "EQ Slot 1")
-	a.mEq[1] = mEqParent.AddSubMenuItem("Slot 2", "EQ Slot 2")
-	a.mEq[2] = mEqParent.AddSubMenuItem("Slot 3", "EQ Slot 3")
+	a.mEqParent = systray.AddMenuItem("EQ Preset", "Switch EQ")
+	a.mEq[0] = a.mEqParent.AddSubMenuItem("Slot 1", "EQ Slot 1")
+	a.mEq[1] = a.mEqParent.AddSubMenuItem("Slot 2", "EQ Slot 2")
+	a.mEq[2] = a.mEqParent.AddSubMenuItem("Slot 3", "EQ Slot 3")
+	a.mEqParent.Hide()
 
 	// ── Lighting ──
 	a.mLightTog = systray.AddMenuItem("RGB: Off", "Toggle RGB lighting")
+	a.mLightTog.Hide()
 
 	// ── Microphone ──
-	a.mMicMute = systray.AddMenuItem("Mic: Unmuted", "Mic mute status (hardware)")
-	a.mMicMute.Disable()
 	a.mMNCTog = systray.AddMenuItem("Mic Noise Cancellation: Off", "Toggle MNC")
+	a.mMNCTog.Hide()
 
 	systray.AddSeparator()
 
@@ -160,8 +165,7 @@ func (a *App) handleMonitorEvents() {
 
 		case monitor.EventDongleDisconnected:
 			a.mReceiver.SetTitle("USB Receiver: Disconnected")
-			a.mHeadset.Hide()
-			a.mBattery.Hide()
+			a.hideHeadsetControls()
 
 		case monitor.EventHeadsetPowerOn:
 			a.mHeadset.SetTitle("Headset: Connected")
@@ -169,7 +173,7 @@ func (a *App) handleMonitorEvents() {
 
 		case monitor.EventHeadsetPowerOff:
 			a.mHeadset.SetTitle("Headset: Disconnected")
-			a.mBattery.Hide()
+			a.hideHeadsetControls()
 
 		case monitor.EventHeadsetStatus:
 			s := evt.Status
@@ -179,17 +183,20 @@ func (a *App) handleMonitorEvents() {
 			a.mReceiver.SetTitle("USB Receiver: Connected")
 			a.mHeadset.SetTitle("Headset: Connected")
 			a.mHeadset.Show()
+			a.updateMicStatus(s.Muted)
 			if s.BatteryPercent >= 0 {
 				a.mBattery.SetTitle(fmt.Sprintf("Battery: %d%%", s.BatteryPercent))
 				a.mBattery.Show()
 			}
+			a.mEqParent.Show()
 			a.updateEqCheck(s.EqSlot)
+			a.mLightTog.Show()
 			a.mu.Lock()
 			a.lightOn = s.LightSlot > 0
 			a.mncOn = s.MNCOn
 			a.mu.Unlock()
 			a.updateLightStatus(s.LightSlot > 0)
-			a.updateMicStatus(s.Muted)
+			a.mMNCTog.Show()
 			a.updateMNCStatus(s.MNCOn)
 		}
 	}
@@ -274,12 +281,22 @@ func (a *App) toggleMNC() {
 	}
 }
 
+func (a *App) hideHeadsetControls() {
+	a.mHeadset.Hide()
+	a.mMicMute.Hide()
+	a.mBattery.Hide()
+	a.mEqParent.Hide()
+	a.mLightTog.Hide()
+	a.mMNCTog.Hide()
+}
+
 func (a *App) updateMicStatus(muted bool) {
 	if muted {
-		a.mMicMute.SetTitle("Mic: Muted")
+		a.mMicMute.SetTitle("Headset Mic: Muted")
 	} else {
-		a.mMicMute.SetTitle("Mic: Unmuted")
+		a.mMicMute.SetTitle("Headset Mic: Unmuted")
 	}
+	a.mMicMute.Show()
 }
 
 func (a *App) updateMNCStatus(on bool) {
