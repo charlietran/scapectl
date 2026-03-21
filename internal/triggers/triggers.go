@@ -47,6 +47,7 @@ func (r *Runner) Run(events <-chan monitor.Event) {
 
 func (r *Runner) dispatch(evt monitor.Event) {
 	evtStr := evt.Type.String()
+	log.Printf("[event] %s: %s", evtStr, evt.Device)
 
 	for _, rule := range r.cfg.Triggers {
 		if !rule.Enabled {
