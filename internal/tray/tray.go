@@ -87,10 +87,10 @@ func (a *App) OnReady() {
 	systray.AddSeparator()
 
 	// ── Display ──
-	mDisp := systray.AddMenuItem("Tray Icon", "Change tray display")
+	mDisp := systray.AddMenuItem("Tray Display", "Change tray display")
+	a.mDispText = mDisp.AddSubMenuItem("Text", "Text label in tray")
 	a.mDispBlack = mDisp.AddSubMenuItem("Black Icon", "Black tray icon")
 	a.mDispWhite = mDisp.AddSubMenuItem("White Icon", "White tray icon")
-	a.mDispText = mDisp.AddSubMenuItem("Text", "Text label in tray")
 	a.updateDispCheck()
 
 	// ── Utility ──
@@ -272,7 +272,7 @@ func (a *App) applyDisplay() {
 	a.mu.Unlock()
 
 	if mode == "" {
-		mode = "black"
+		mode = "text"
 	}
 	if text == "" {
 		text = "Scape"
@@ -282,14 +282,14 @@ func (a *App) applyDisplay() {
 	}
 
 	switch mode {
+	case "black":
+		systray.SetIcon(iconBlack)
+		systray.SetTitle("")
 	case "white":
 		systray.SetIcon(iconWhite)
 		systray.SetTitle("")
-	case "text":
+	default: // "text"
 		systray.SetTitle(text)
-	default: // "black"
-		systray.SetIcon(iconBlack)
-		systray.SetTitle("")
 	}
 }
 
@@ -298,7 +298,7 @@ func (a *App) updateDispCheck() {
 	mode := a.cfg.Settings.TrayDisplay
 	a.mu.Unlock()
 	if mode == "" {
-		mode = "black"
+		mode = "text"
 	}
 
 	a.mDispBlack.Uncheck()

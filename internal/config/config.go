@@ -36,7 +36,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Settings: Settings{
 			PollIntervalMS: 1000,
-			TrayDisplay:    "black",
+			TrayDisplay:    "text",
 			TrayText:       "Scape",
 		},
 		Triggers: nil,
@@ -139,7 +139,7 @@ poll_interval_ms = 1000
 # "black" and "white" show the Scape icon (pick whichever suits your
 # menu bar theme). "text" shows a text label instead — see tray_text.
 # Changing between icon and text modes restarts the tray app.
-tray_display = "black"
+tray_display = "text"
 
 # Text shown in the menu bar when tray_display = "text".
 # Maximum 16 characters (longer strings are truncated).
