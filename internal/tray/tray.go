@@ -64,12 +64,14 @@ func (a *App) OnReady() {
 	a.applyDisplay()
 
 	// ── Status section ──
-	a.mReceiver = systray.AddMenuItem("USB Receiver: Disconnected", "Dongle status")
+	a.mReceiver = systray.AddMenuItem("Checking device status...", "Dongle status")
 	a.mReceiver.Disable()
-	a.mHeadset = systray.AddMenuItem("Headset: Disconnected", "Headset status")
+	a.mHeadset = systray.AddMenuItem("", "Headset status")
 	a.mHeadset.Disable()
-	a.mBattery = systray.AddMenuItem("Battery: --", "Battery level")
+	a.mHeadset.Hide()
+	a.mBattery = systray.AddMenuItem("", "Battery level")
 	a.mBattery.Disable()
+	a.mBattery.Hide()
 
 	systray.AddSeparator()
 
@@ -144,18 +146,21 @@ func (a *App) handleMonitorEvents() {
 		switch evt.Type {
 		case monitor.EventDongleConnected:
 			a.mReceiver.SetTitle("USB Receiver: Connected")
+			a.mHeadset.SetTitle("Headset: Checking...")
+			a.mHeadset.Show()
 
 		case monitor.EventDongleDisconnected:
 			a.mReceiver.SetTitle("USB Receiver: Disconnected")
-			a.mHeadset.SetTitle("Headset: Disconnected")
-			a.mBattery.SetTitle("Battery: --")
+			a.mHeadset.Hide()
+			a.mBattery.Hide()
 
 		case monitor.EventHeadsetPowerOn:
 			a.mHeadset.SetTitle("Headset: Connected")
+			a.mHeadset.Show()
 
 		case monitor.EventHeadsetPowerOff:
 			a.mHeadset.SetTitle("Headset: Disconnected")
-			a.mBattery.SetTitle("Battery: --")
+			a.mBattery.Hide()
 
 		case monitor.EventHeadsetStatus:
 			s := evt.Status
@@ -164,12 +169,14 @@ func (a *App) handleMonitorEvents() {
 			}
 			a.mReceiver.SetTitle("USB Receiver: Connected")
 			a.mHeadset.SetTitle("Headset: Connected")
+			a.mHeadset.Show()
 			if s.BatteryPercent >= 0 {
 				icon := "🔋"
 				if s.Charging {
 					icon = "⚡"
 				}
 				a.mBattery.SetTitle(fmt.Sprintf("%s Battery: %d%%", icon, s.BatteryPercent))
+				a.mBattery.Show()
 			}
 			a.updateEqCheck(s.EqSlot)
 			a.mu.Lock()
