@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"sync"
+	"syscall"
 
 	"github.com/getlantern/systray"
 
@@ -405,7 +406,12 @@ func (a *App) restart() {
 		log.Printf("[tray] failed to get executable path: %v", err)
 		return
 	}
-	if err := exec.Command(exe).Start(); err != nil {
+	cmd := exec.Command(exe)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	// Detach the new process so it survives if the terminal closes
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
 		log.Printf("[tray] failed to restart: %v", err)
 		return
 	}
