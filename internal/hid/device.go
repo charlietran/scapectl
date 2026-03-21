@@ -10,6 +10,9 @@ import (
 	usbhid "github.com/sstallion/go-hid"
 )
 
+// Verbose controls whether debug-level log messages are printed.
+var Verbose bool
+
 // UsagePageVendor is the HID usage page for the vendor-specific control
 // collection (collection 3). This is the only collection we can send
 // commands to — the others are consumer control, telephony, etc.
@@ -100,7 +103,9 @@ func OpenPath(path string) (*Device, error) {
 		d.nonBlocking = true
 	}
 
-	log.Printf("opened device: %s", info)
+	if Verbose {
+		log.Printf("[hid] opened device: %s", info)
+	}
 	return d, nil
 }
 

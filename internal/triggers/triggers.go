@@ -47,7 +47,15 @@ func (r *Runner) Run(events <-chan monitor.Event) {
 
 func (r *Runner) dispatch(evt monitor.Event) {
 	evtStr := evt.Type.String()
-	log.Printf("[event] %s: %s", evtStr, evt.Device)
+
+	// HeadsetStatus fires every few seconds — only log in verbose mode
+	if evt.Type == monitor.EventHeadsetStatus {
+		if r.cfg.Settings.Verbose {
+			log.Printf("[event] %s: %s", evtStr, evt.Device)
+		}
+	} else {
+		log.Printf("[event] %s: %s", evtStr, evt.Device)
+	}
 
 	for _, rule := range r.cfg.Triggers {
 		if !rule.Enabled {

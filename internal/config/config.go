@@ -22,6 +22,7 @@ type Settings struct {
 	PollIntervalMS int    `toml:"poll_interval_ms"`
 	TrayDisplay    string `toml:"tray_display"` // "black", "white", or "text"
 	TrayText       string `toml:"tray_text"`    // custom text when tray_display is "text" (max 16 chars)
+	Verbose        bool   `toml:"verbose"`      // enable verbose logging
 }
 
 type TriggerRule struct {
@@ -143,6 +144,9 @@ tray_display = "black"
 # Text shown in the menu bar when tray_display = "text".
 # Maximum 16 characters (longer strings are truncated).
 tray_text = "Scape"
+
+# Enable verbose logging (shows device open/close, status polls, etc.).
+verbose = false
 
 # ── Trigger scripts ──────────────────────────────────────────────
 #

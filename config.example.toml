@@ -17,6 +17,9 @@ tray_display = "black"
 # Maximum 16 characters (longer strings are truncated).
 tray_text = "Scape"
 
+# Enable verbose logging (shows device open/close, status polls, etc.).
+verbose = false
+
 # ── Trigger scripts ──────────────────────────────────────────────
 #
 # Scripts that run automatically on device events.

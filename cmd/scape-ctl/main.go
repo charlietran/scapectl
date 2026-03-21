@@ -59,6 +59,7 @@ func main() {
 	// ── Tray mode (default) ──
 	cfg := config.Load()
 	config.EnsureExists()
+	hid.Verbose = cfg.Settings.Verbose
 
 	pollInterval := time.Duration(cfg.Settings.PollIntervalMS) * time.Millisecond
 	if pollInterval < 200*time.Millisecond {
