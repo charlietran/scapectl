@@ -1,4 +1,5 @@
-// Package monitor polls the USB bus for Fractal device connect/disconnect events.
+// Package monitor polls the USB bus for Fractal device connect/disconnect events
+// and tracks headset power state.
 package monitor
 
 import (
@@ -13,36 +14,44 @@ import (
 type EventType int
 
 const (
-	EventConnected    EventType = iota
-	EventDisconnected
+	EventDongleConnected    EventType = iota // USB dongle plugged in
+	EventDongleDisconnected                  // USB dongle unplugged
+	EventHeadsetPowerOn                      // Headset powered on (detected via dongle)
+	EventHeadsetPowerOff                     // Headset powered off or out of range
 )
 
 func (e EventType) String() string {
 	switch e {
-	case EventConnected:
-		return "Connected"
-	case EventDisconnected:
-		return "Disconnected"
+	case EventDongleConnected:
+		return "DongleConnected"
+	case EventDongleDisconnected:
+		return "DongleDisconnected"
+	case EventHeadsetPowerOn:
+		return "HeadsetPowerOn"
+	case EventHeadsetPowerOff:
+		return "HeadsetPowerOff"
 	default:
 		return "Unknown"
 	}
 }
 
-// Event is emitted when a device connects or disconnects.
+// Event is emitted when a device state changes.
 type Event struct {
 	Type      EventType
 	Device    hid.DeviceInfo
 	Timestamp time.Time
 }
 
-// Monitor watches for Fractal HID devices appearing/disappearing.
+// Monitor watches for Fractal HID devices and headset power state.
 type Monitor struct {
-	interval time.Duration
-	stop     chan struct{}
-	mu       sync.Mutex
-	known    map[string]hid.DeviceInfo // path → info
-	subs     []chan Event              // fan-out subscriber channels
-	running  bool
+	interval       time.Duration
+	stop           chan struct{}
+	mu             sync.Mutex
+	known          map[string]hid.DeviceInfo // path → info
+	subs           []chan Event              // fan-out subscriber channels
+	running        bool
+	headsetOnline  bool // last known headset power state
+	headsetChecked bool // true after first SetHeadsetOnline call
 }
 
 // New creates a monitor that polls at the given interval.
@@ -105,6 +114,41 @@ func (m *Monitor) Stop() {
 	log.Println("[monitor] stopped")
 }
 
+// SetHeadsetOnline reports the headset power state to the monitor.
+// Call this from status polling (e.g. tray pollStatus). The monitor
+// emits HeadsetPowerOn/Off events when the state changes.
+func (m *Monitor) SetHeadsetOnline(online bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.headsetChecked {
+		m.headsetChecked = true
+		m.headsetOnline = online
+		return
+	}
+
+	if online == m.headsetOnline {
+		return
+	}
+	m.headsetOnline = online
+
+	var devInfo hid.DeviceInfo
+	for _, d := range m.known {
+		devInfo = d
+		break
+	}
+
+	evtType := EventHeadsetPowerOn
+	if !online {
+		evtType = EventHeadsetPowerOff
+	}
+	m.emit(Event{
+		Type:      evtType,
+		Device:    devInfo,
+		Timestamp: time.Now(),
+	})
+}
+
 // KnownDevices returns paths of currently tracked devices.
 func (m *Monitor) KnownDevices() []hid.DeviceInfo {
 	m.mu.Lock()
@@ -152,26 +196,36 @@ func (m *Monitor) scan() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Detect new connections
+	// Detect new dongle connections
 	for path, dev := range currentPaths {
 		if _, existed := m.known[path]; !existed {
-			log.Printf("[monitor] connected: %s", dev)
+			log.Printf("[monitor] dongle connected: %s", dev)
 			m.known[path] = dev
+			m.headsetChecked = false
 			m.emit(Event{
-				Type:      EventConnected,
+				Type:      EventDongleConnected,
 				Device:    dev,
 				Timestamp: time.Now(),
 			})
 		}
 	}
 
-	// Detect disconnections
+	// Detect dongle disconnections
 	for path, dev := range m.known {
 		if _, exists := currentPaths[path]; !exists {
-			log.Printf("[monitor] disconnected: %s", dev)
+			log.Printf("[monitor] dongle disconnected: %s", dev)
 			delete(m.known, path)
+			if m.headsetOnline {
+				m.headsetOnline = false
+				m.emit(Event{
+					Type:      EventHeadsetPowerOff,
+					Device:    dev,
+					Timestamp: time.Now(),
+				})
+			}
+			m.headsetChecked = false
 			m.emit(Event{
-				Type:      EventDisconnected,
+				Type:      EventDongleDisconnected,
 				Device:    dev,
 				Timestamp: time.Now(),
 			})
@@ -180,7 +234,7 @@ func (m *Monitor) scan() {
 }
 
 func (m *Monitor) emit(evt Event) {
-	// m.mu is already held by scan()
+	// m.mu is already held
 	for _, ch := range m.subs {
 		select {
 		case ch <- evt:

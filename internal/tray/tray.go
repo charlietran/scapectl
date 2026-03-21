@@ -169,13 +169,13 @@ func (a *App) handleClicks() {
 func (a *App) handleMonitorEvents() {
 	for evt := range a.events {
 		switch evt.Type {
-		case monitor.EventConnected:
-			log.Printf("[tray] device connected: %s", evt.Device)
+		case monitor.EventDongleConnected:
+			log.Printf("[tray] dongle connected: %s", evt.Device)
 			a.mStatus.SetTitle(fmt.Sprintf("● %s", evt.Device.ProductName))
 			go a.tryConnect()
 
-		case monitor.EventDisconnected:
-			log.Printf("[tray] device disconnected: %s", evt.Device)
+		case monitor.EventDongleDisconnected:
+			log.Printf("[tray] dongle disconnected: %s", evt.Device)
 			a.mu.Lock()
 			if a.device != nil {
 				a.device.Close()
@@ -183,6 +183,15 @@ func (a *App) handleMonitorEvents() {
 			}
 			a.mu.Unlock()
 			a.mStatus.SetTitle("⊘ No device")
+			a.mBattery.SetTitle("Battery: --")
+
+		case monitor.EventHeadsetPowerOn:
+			log.Printf("[tray] headset powered on")
+			a.mStatus.SetTitle(fmt.Sprintf("● %s", evt.Device.ProductName))
+
+		case monitor.EventHeadsetPowerOff:
+			log.Printf("[tray] headset powered off")
+			a.mStatus.SetTitle("● Dongle connected (headset off)")
 			a.mBattery.SetTitle("Battery: --")
 		}
 	}
@@ -209,6 +218,9 @@ func (a *App) pollStatus() {
 		if status == nil {
 			continue
 		}
+
+		// Feed headset power state to monitor (emits events on change)
+		a.mon.SetHeadsetOnline(status.Connected)
 
 		if !status.Connected {
 			a.mStatus.SetTitle("● Dongle connected (headset off)")

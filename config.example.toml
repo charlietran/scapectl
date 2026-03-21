@@ -19,10 +19,17 @@ tray_text = "Scape"
 
 # ── Trigger scripts ──────────────────────────────────────────────
 #
-# Scripts that run automatically on device connect/disconnect.
+# Scripts that run automatically on device events.
+#
+# Events:
+#   "DongleConnected"      USB dongle plugged in
+#   "DongleDisconnected"   USB dongle unplugged
+#   "HeadsetPowerOn"       Headset turned on (detected via dongle)
+#   "HeadsetPowerOff"      Headset turned off or out of range
+#
 # Each trigger receives these environment variables:
 #
-#   SCAPE_EVENT     "Connected" or "Disconnected"
+#   SCAPE_EVENT     Event name (see above)
 #   SCAPE_DEVICE    Product name (e.g. "Fractal Scape Dongle")
 #   SCAPE_VID       Vendor ID in hex (e.g. "36bc")
 #   SCAPE_PID       Product ID in hex (e.g. "0001")
@@ -30,18 +37,20 @@ tray_text = "Scape"
 #   SCAPE_TIMESTAMP ISO 8601 timestamp
 #   SCAPE_JSON      Full event as JSON
 #
-# Example: desktop notification on connect/disconnect
+# Examples (uncomment to enable):
 #
-#   macOS:
-#     [[triggers]]
-#     event   = "Connected"
-#     script  = "osascript -e 'display notification \"$SCAPE_DEVICE connected\" with title \"Scape\"'"
-#     label   = "Connect notification"
-#     enabled = true
+# macOS notification when headset powers on:
 #
-#   Linux:
-#     [[triggers]]
-#     event   = "Connected"
-#     script  = "notify-send 'Scape' '$SCAPE_DEVICE connected'"
-#     label   = "Connect notification"
-#     enabled = true
+# [[triggers]]
+# event   = "HeadsetPowerOn"
+# script  = "osascript -e 'display notification \"Headset connected\" with title \"Scape\"'"
+# label   = "Headset on notification"
+# enabled = true
+#
+# Linux notification when headset powers off:
+#
+# [[triggers]]
+# event   = "HeadsetPowerOff"
+# script  = "notify-send 'Scape' 'Headset disconnected'"
+# label   = "Headset off notification"
+# enabled = true
