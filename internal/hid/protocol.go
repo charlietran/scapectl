@@ -147,7 +147,6 @@ type DeviceStatus struct {
 	Connected       bool
 	Mode            ConnectionMode
 	BatteryPercent  int // -1 if unknown
-	Charging        bool
 	FirmwareVersion string // headset firmware "major.minor"
 	DongleFWVersion string // dongle firmware "major.minor"
 

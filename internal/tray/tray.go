@@ -24,7 +24,6 @@ var iconBlack []byte
 //go:embed icons/white.png
 var iconWhite []byte
 
-
 // App holds the tray application state.
 type App struct {
 	cfg      *config.Config
@@ -34,18 +33,18 @@ type App struct {
 	mu       sync.Mutex
 
 	// Menu items
-	mReceiver    *systray.MenuItem
-	mHeadset     *systray.MenuItem
-	mBattery     *systray.MenuItem
-	mEq          [3]*systray.MenuItem
-	mLightTog    *systray.MenuItem
-	lightOn      bool
-	mDispBlack   *systray.MenuItem
-	mDispWhite   *systray.MenuItem
-	mDispText    *systray.MenuItem
-	mConfigDir   *systray.MenuItem
-	mReload      *systray.MenuItem
-	mQuit        *systray.MenuItem
+	mReceiver  *systray.MenuItem
+	mHeadset   *systray.MenuItem
+	mBattery   *systray.MenuItem
+	mEq        [3]*systray.MenuItem
+	mLightTog  *systray.MenuItem
+	lightOn    bool
+	mDispBlack *systray.MenuItem
+	mDispWhite *systray.MenuItem
+	mDispText  *systray.MenuItem
+	mConfigDir *systray.MenuItem
+	mReload    *systray.MenuItem
+	mQuit      *systray.MenuItem
 }
 
 // New creates the tray app.
@@ -171,11 +170,7 @@ func (a *App) handleMonitorEvents() {
 			a.mHeadset.SetTitle("Headset: Connected")
 			a.mHeadset.Show()
 			if s.BatteryPercent >= 0 {
-				icon := "🔋"
-				if s.Charging {
-					icon = "⚡"
-				}
-				a.mBattery.SetTitle(fmt.Sprintf("%s Battery: %d%%", icon, s.BatteryPercent))
+				a.mBattery.SetTitle(fmt.Sprintf("Battery: %d%%", s.BatteryPercent))
 				a.mBattery.Show()
 			}
 			a.updateEqCheck(s.EqSlot)
@@ -246,7 +241,6 @@ func (a *App) updateLightStatus(on bool) {
 		a.mLightTog.Uncheck()
 	}
 }
-
 
 func (a *App) reloadConfig() {
 	cfg, err := config.LoadErr()
@@ -373,4 +367,3 @@ func (a *App) openConfigDir() {
 		log.Printf("[tray] config location: %s", dir)
 	}
 }
-
