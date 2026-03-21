@@ -196,7 +196,7 @@ func cmdSniff() {
 	defer dev.Close()
 
 	fmt.Printf("Sniffing HID input from %s\n", dev.Info)
-	fmt.Println("Press Ctrl+C to stop.\n")
+	fmt.Println("Press Ctrl+C to stop.")
 
 	for {
 		data, err := dev.RawRead(100 * time.Millisecond)
