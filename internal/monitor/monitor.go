@@ -274,8 +274,14 @@ func (m *Monitor) ensureConnected() {
 	m.dev = dev
 }
 
-// pollHeadset queries headset status (f1 21) and sends keepalive.
+// pollHeadset mirrors the web app polling sequence: 11 21 → f1 21 → keepalive.
+// The dongle poll (11 21) appears to prime the dongle for faster f1 21 response.
 func (m *Monitor) pollHeadset(dev *hid.Device) {
+	// Dongle poll first (matches web app sequence)
+	rid, payload := hid.BuildDonglePoll()
+	dev.SendAndReceive(rid, payload, 100*time.Millisecond)
+
+	// Full headset status
 	status, err := dev.GetStatus()
 	if err != nil {
 		// Connection may have gone bad — close and reconnect next tick
