@@ -308,7 +308,7 @@ func (m *Monitor) pollHeadset(dev *hid.Device) {
 
 	// Determine effective state: require 3 consecutive offline reads
 	// to confirm disconnect (debounce transient dongle responses)
-	effectiveOnline := online || m.offlineCount < 3
+	effectiveOnline := online || m.offlineCount < 2
 
 	// First poll: record state. Only emit HeadsetPowerOff (for tray UI),
 	// never HeadsetPowerOn (dongle reports stale "online" on first read).
