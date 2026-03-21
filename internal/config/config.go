@@ -19,7 +19,6 @@ type Config struct {
 
 type Settings struct {
 	PollIntervalMS int    `toml:"poll_interval_ms"`
-	Notifications  bool   `toml:"notifications"`
 	TrayDisplay    string `toml:"tray_display"` // "black", "white", or "text"
 	TrayText       string `toml:"tray_text"`    // custom text when tray_display is "text" (max 16 chars)
 }
@@ -35,7 +34,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		Settings: Settings{
 			PollIntervalMS: 1000,
-			Notifications:  true,
 			TrayDisplay:    "black",
 			TrayText:       "Scape",
 		},
@@ -112,9 +110,6 @@ const defaultConfigTOML = `# scape-ctl configuration
 # Minimum: 200. Default: 1000.
 poll_interval_ms = 1000
 
-# Show desktop notifications on connect/disconnect and config reload.
-notifications = true
-
 # Tray icon display mode: "black", "white", or "text".
 # "black" and "white" show the Scape icon (pick whichever suits your
 # menu bar theme). "text" shows a text label instead — see tray_text.
@@ -138,19 +133,21 @@ tray_text = "Scape"
 #   SCAPE_TIMESTAMP ISO 8601 timestamp
 #   SCAPE_JSON      Full event as JSON
 #
-# Example triggers (uncomment to enable):
-
-# [[triggers]]
-# event   = "Connected"
-# script  = "notify-send 'Scape' 'Headset connected'"
-# label   = "Connect notification"
-# enabled = true
-
-# [[triggers]]
-# event   = "Disconnected"
-# script  = "notify-send 'Scape' 'Headset disconnected'"
-# label   = "Disconnect notification"
-# enabled = true
+# Example: desktop notification on connect/disconnect
+#
+#   macOS:
+#     [[triggers]]
+#     event   = "Connected"
+#     script  = "osascript -e 'display notification \"$SCAPE_DEVICE connected\" with title \"Scape\"'"
+#     label   = "Connect notification"
+#     enabled = true
+#
+#   Linux:
+#     [[triggers]]
+#     event   = "Connected"
+#     script  = "notify-send 'Scape' '$SCAPE_DEVICE connected'"
+#     label   = "Connect notification"
+#     enabled = true
 `
 
 // EnsureExists creates a default config file if none exists.

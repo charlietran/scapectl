@@ -297,7 +297,6 @@ func (a *App) reloadConfig() {
 	cfg, err := config.LoadErr()
 	if err != nil {
 		log.Printf("[tray] config reload error: %v", err)
-		notify("Scape Config Error", err.Error())
 		a.mReload.SetTitle("Reload Config (error!)")
 		return
 	}
@@ -309,7 +308,6 @@ func (a *App) reloadConfig() {
 	}
 	a.mReload.SetTitle("Reload Config")
 	log.Printf("[tray] config reloaded (%d triggers)", len(cfg.Triggers))
-	notify("Scape", fmt.Sprintf("Config reloaded (%d triggers)", len(cfg.Triggers)))
 }
 
 func (a *App) applyDisplay() {
@@ -422,23 +420,3 @@ func (a *App) openConfigDir() {
 	}
 }
 
-// notify sends a desktop notification (best-effort).
-func notify(title, body string) {
-	switch runtime.GOOS {
-	case "linux":
-		_ = exec.Command("notify-send", title, body).Start()
-	case "darwin":
-		script := fmt.Sprintf(`display notification "%s" with title "%s"`, body, title)
-		_ = exec.Command("osascript", "-e", script).Start()
-	case "windows":
-		// PowerShell toast
-		ps := fmt.Sprintf(
-			`[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; `+
-				`$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(0); `+
-				`$xml.GetElementsByTagName('text')[0].AppendChild($xml.CreateTextNode('%s')) | Out-Null; `+
-				`[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('scape-ctl').Show([Windows.UI.Notifications.ToastNotification]::new($xml))`,
-			title+": "+body,
-		)
-		_ = exec.Command("powershell", "-Command", ps).Start()
-	}
-}

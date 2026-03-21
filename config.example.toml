@@ -7,9 +7,6 @@
 # Minimum: 200. Default: 1000.
 poll_interval_ms = 1000
 
-# Show desktop notifications on connect/disconnect and config reload.
-notifications = true
-
 # Tray icon display mode: "black", "white", or "text".
 # "black" and "white" show the Scape icon (pick whichever suits your
 # menu bar theme). "text" shows a text label instead — see tray_text.
@@ -33,16 +30,18 @@ tray_text = "Scape"
 #   SCAPE_TIMESTAMP ISO 8601 timestamp
 #   SCAPE_JSON      Full event as JSON
 #
-# Example triggers (uncomment to enable):
-
-# [[triggers]]
-# event   = "Connected"
-# script  = "notify-send 'Scape' 'Headset connected'"
-# label   = "Connect notification"
-# enabled = true
-
-# [[triggers]]
-# event   = "Disconnected"
-# script  = "notify-send 'Scape' 'Headset disconnected'"
-# label   = "Disconnect notification"
-# enabled = true
+# Example: desktop notification on connect/disconnect
+#
+#   macOS:
+#     [[triggers]]
+#     event   = "Connected"
+#     script  = "osascript -e 'display notification \"$SCAPE_DEVICE connected\" with title \"Scape\"'"
+#     label   = "Connect notification"
+#     enabled = true
+#
+#   Linux:
+#     [[triggers]]
+#     event   = "Connected"
+#     script  = "notify-send 'Scape' '$SCAPE_DEVICE connected'"
+#     label   = "Connect notification"
+#     enabled = true
