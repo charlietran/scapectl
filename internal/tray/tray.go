@@ -324,6 +324,9 @@ func (a *App) applyDisplay() {
 	if text == "" {
 		text = "Scape"
 	}
+	if len(text) > 16 {
+		text = text[:16]
+	}
 
 	switch mode {
 	case "white":
