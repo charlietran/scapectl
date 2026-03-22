@@ -1,8 +1,0 @@
-scape-ctl
-scape-ctl-*
-*.exe
-tmp/
-.DS_Store
-.claude/
-.git/
-dist/

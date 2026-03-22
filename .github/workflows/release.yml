@@ -6,95 +6,81 @@ on:
 
 permissions:
   contents: write
-  packages: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-            artifact: scape-ctl_linux_amd64
-            container: ghcr.io/charlietran/scape-ctl/builder:latest
-          - os: macos-latest
-            goos: darwin
-            goarch: arm64
-            artifact: scape-ctl_darwin_arm64
-          - os: windows-latest
-            goos: windows
-            goarch: amd64
-            artifact: scape-ctl_windows_amd64
-
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container || '' }}
-
+  build-linux-windows:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Fix git safe directory (container only)
-        if: matrix.container
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-      - name: Setup Go
-        if: ${{ !matrix.container }}
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - name: Install Linux deps
-        if: matrix.goos == 'linux'
-        run: |
-          apt-get update && apt-get install -y --no-install-recommends \
-            gcc pkg-config libhidapi-dev libudev-dev \
-            libayatana-appindicator3-dev libgtk-3-dev
+      - name: Get version from tag
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Install macOS deps
-        if: matrix.goos == 'darwin'
-        run: brew install hidapi
+      - name: Build Linux
+        run: |
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
+            go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o scape-ctl_linux_amd64/scape-ctl ./cmd/scape-ctl
+          cp README.md config.example.toml 50-fractal.rules scape-ctl_linux_amd64/
+          tar -czf scape-ctl_linux_amd64.tar.gz scape-ctl_linux_amd64
+
+      - name: Build Windows
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o scape-ctl_windows_amd64/scape-ctl.exe ./cmd/scape-ctl
+          cp README.md config.example.toml scape-ctl_windows_amd64/
+          cd scape-ctl_windows_amd64 && zip -r ../scape-ctl_windows_amd64.zip . && cd ..
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scape-ctl_linux_amd64
+          path: scape-ctl_linux_amd64.tar.gz
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: scape-ctl_windows_amd64
+          path: scape-ctl_windows_amd64.zip
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
 
       - name: Get version from tag
         id: version
-        shell: bash
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build
-        shell: bash
+      - name: Build macOS
         run: |
-          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
             go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
-            -o ${{ matrix.artifact }}/${{ matrix.goos == 'windows' && 'scape-ctl.exe' || 'scape-ctl' }} \
-            ./cmd/scape-ctl
+            -o scape-ctl_darwin_arm64/scape-ctl ./cmd/scape-ctl
+          cp README.md config.example.toml scape-ctl_darwin_arm64/
+          tar -czf scape-ctl_darwin_arm64.tar.gz scape-ctl_darwin_arm64
 
-      - name: Add extras to archive
-        shell: bash
-        run: |
-          cp README.md config.example.toml ${{ matrix.artifact }}/
-          if [ "${{ matrix.goos }}" = "linux" ]; then
-            cp 50-fractal.rules ${{ matrix.artifact }}/
-          fi
-
-      - name: Package (tar.gz)
-        if: matrix.goos != 'windows'
-        run: tar -czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
-
-      - name: Package (zip)
-        if: matrix.goos == 'windows'
-        shell: bash
-        run: 7z a ${{ matrix.artifact }}.zip ${{ matrix.artifact }}
-
-      - name: Upload artifact
+      - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.${{ matrix.goos == 'windows' && 'zip' || 'tar.gz' }}
+          name: scape-ctl_darwin_arm64
+          path: scape-ctl_darwin_arm64.tar.gz
 
   release:
-    needs: build
+    needs: [build-linux-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
