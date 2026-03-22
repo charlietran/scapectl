@@ -19,6 +19,7 @@ const (
 	EventHeadsetPowerOn                      // Headset powered on (detected via dongle)
 	EventHeadsetPowerOff                     // Headset powered off or out of range
 	EventHeadsetStatus                       // Periodic headset status update
+	EventBatteryLevel                        // Battery level update (for threshold triggers)
 )
 
 func (e EventType) String() string {
@@ -33,6 +34,8 @@ func (e EventType) String() string {
 		return "HeadsetPowerOff"
 	case EventHeadsetStatus:
 		return "HeadsetStatus"
+	case EventBatteryLevel:
+		return "BatteryLevel"
 	default:
 		return "Unknown"
 	}
@@ -55,7 +58,7 @@ type Monitor struct {
 	subs           []chan Event              // fan-out subscriber channels
 	running        bool
 	dev            *hid.Device // persistent HID connection
-	headsetOnline  bool        // confirmed headset state
+	headsetOnline  bool        // last known headset power state
 	headsetChecked bool        // true after first status poll
 }
 
@@ -132,7 +135,7 @@ func (m *Monitor) Device() *hid.Device {
 	return m.dev
 }
 
-// KnownDevices returns currently tracked devices.
+// KnownDevices returns paths of currently tracked devices.
 func (m *Monitor) KnownDevices() []hid.DeviceInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -185,7 +188,15 @@ func (m *Monitor) tick() {
 		return
 	}
 
-	m.pollHeadset(dev)
+	m.pollHeadsetStatus(dev)
+
+	// pollHeadsetStatus may have closed dev on error — recheck
+	m.mu.Lock()
+	stillOpen := m.dev == dev
+	m.mu.Unlock()
+	if stillOpen {
+		dev.SendKeepalive()
+	}
 }
 
 func (m *Monitor) scanBus() {
@@ -263,14 +274,7 @@ func (m *Monitor) ensureConnected() {
 	m.dev = dev
 }
 
-// pollHeadset uses f1 21 (the only reliable presence signal) for both
-// connect and disconnect detection. The dongle relays f1 21 to the headset;
-// when the headset is off, the request times out and GetStatus returns
-// Connected: false.
-//
-// The first poll suppresses HeadsetPowerOn to avoid false triggers from
-// stale dongle state on startup.
-func (m *Monitor) pollHeadset(dev *hid.Device) {
+func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 	status, err := dev.GetStatus()
 	if err != nil {
 		m.mu.Lock()
@@ -281,36 +285,25 @@ func (m *Monitor) pollHeadset(dev *hid.Device) {
 		m.mu.Unlock()
 		return
 	}
-
-	online := status != nil && status.Connected
-
-	if hid.Verbose {
-		log.Printf("[monitor] f1 21 connected=%v headsetOnline=%v", online, m.headsetOnline)
+	if status == nil {
+		return
 	}
 
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var devInfo hid.DeviceInfo
 	for _, d := range m.known {
 		devInfo = d
 		break
 	}
 
-	if !m.headsetChecked {
-		// First poll: record state. Only emit PowerOff (for tray UI).
-		// Suppress PowerOn since dongle can report stale "connected" on first read.
+	// Emit power state change (including first poll)
+	if !m.headsetChecked || status.Connected != m.headsetOnline {
 		m.headsetChecked = true
-		m.headsetOnline = online
-		if !online {
-			m.emit(Event{
-				Type:      EventHeadsetPowerOff,
-				Device:    devInfo,
-				Timestamp: time.Now(),
-			})
-		}
-	} else if online != m.headsetOnline {
-		m.headsetOnline = online
+		m.headsetOnline = status.Connected
 		evtType := EventHeadsetPowerOn
-		if !online {
+		if !status.Connected {
 			evtType = EventHeadsetPowerOff
 		}
 		m.emit(Event{
@@ -320,17 +313,23 @@ func (m *Monitor) pollHeadset(dev *hid.Device) {
 		})
 	}
 
-	if online && status != nil {
+	// Emit periodic status for UI updates (battery, EQ, etc.)
+	if status.Connected {
 		m.emit(Event{
 			Type:      EventHeadsetStatus,
 			Device:    devInfo,
 			Status:    status,
 			Timestamp: time.Now(),
 		})
+		if status.BatteryPercent >= 0 {
+			m.emit(Event{
+				Type:      EventBatteryLevel,
+				Device:    devInfo,
+				Status:    status,
+				Timestamp: time.Now(),
+			})
+		}
 	}
-	m.mu.Unlock()
-
-	dev.SendKeepalive()
 }
 
 func (m *Monitor) emit(evt Event) {
