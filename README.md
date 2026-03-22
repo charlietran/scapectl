@@ -61,9 +61,13 @@ macOS requires explicit permission for apps to access HID devices. On first run 
 
 **Bypass Gatekeeper (unsigned binary):**
 
-If macOS blocks the binary with "cannot be opened because the developer cannot be verified":
+If macOS blocks the app with "cannot be opened because the developer cannot be verified":
 
 ```bash
+# For the .app bundle:
+xattr -cr ScapeControl.app
+
+# For the standalone binary:
 xattr -d com.apple.quarantine ./scape-ctl
 ```
 

@@ -32,12 +32,12 @@ jobs:
             -o scape-ctl ./cmd/scape-ctl
 
           # Bundle as .app
-          mkdir -p "Scape Control.app/Contents/MacOS"
-          mkdir -p "Scape Control.app/Contents/Resources"
-          mv scape-ctl "Scape Control.app/Contents/MacOS/scape-ctl"
-          cp README.md config.example.toml "Scape Control.app/Contents/Resources/"
+          mkdir -p "ScapeControl.app/Contents/MacOS"
+          mkdir -p "ScapeControl.app/Contents/Resources"
+          mv scape-ctl "ScapeControl.app/Contents/MacOS/ScapeControl"
+          cp README.md config.example.toml "ScapeControl.app/Contents/Resources/"
 
-          cat > "Scape Control.app/Contents/Info.plist" << 'PLIST'
+          cat > "ScapeControl.app/Contents/Info.plist" << 'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -53,7 +53,7 @@ jobs:
               <key>CFBundleShortVersionString</key>
               <string>VERSION_PLACEHOLDER</string>
               <key>CFBundleExecutable</key>
-              <string>scape-ctl</string>
+              <string>ScapeControl</string>
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>NSHighResolutionCapable</key>
@@ -64,8 +64,8 @@ jobs:
           </plist>
           PLIST
 
-          sed -i '' "s/VERSION_PLACEHOLDER/${VERSION}/g" "Scape Control.app/Contents/Info.plist"
-          zip -r scape-ctl_darwin_arm64.zip "Scape Control.app"
+          sed -i '' "s/VERSION_PLACEHOLDER/${VERSION}/g" "ScapeControl.app/Contents/Info.plist"
+          zip -r scape-ctl_darwin_arm64.zip "ScapeControl.app"
 
       - name: Build Linux (amd64)
         run: |
@@ -79,7 +79,7 @@ jobs:
         run: |
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
             go build -ldflags "-s -w -H windowsgui -X main.version=${{ steps.version.outputs.version }}" \
-            -o scape-ctl_windows_amd64/scape-ctl.exe ./cmd/scape-ctl
+            -o scape-ctl_windows_amd64/ScapeControl.exe ./cmd/scape-ctl
           cp README.md config.example.toml scape-ctl_windows_amd64/
           cd scape-ctl_windows_amd64 && zip -r ../scape-ctl_windows_amd64.zip . && cd ..
 
