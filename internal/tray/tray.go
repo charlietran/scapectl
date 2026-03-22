@@ -72,50 +72,50 @@ func (a *App) OnReady() {
 	a.applyDisplay()
 
 	// ── Receiver status ──
-	a.mReceiver = systray.AddMenuItem("Checking device status...", "Dongle status")
+	a.mReceiver = systray.AddMenuItem("Checking device status...", "")
 	a.mReceiver.Disable()
 
 	systray.AddSeparator()
 
 	// ── Headset section (all hidden until headset connects) ──
-	a.mHeadset = systray.AddMenuItem("Headset: Disconnected", "Headset status")
+	a.mHeadset = systray.AddMenuItem("Headset: Disconnected", "")
 	a.mHeadset.Disable()
-	a.mMicMute = systray.AddMenuItem("", "Mic mute status (hardware)")
+	a.mMicMute = systray.AddMenuItem("", "")
 	a.mMicMute.Disable()
 	a.mMicMute.Hide()
-	a.mBattery = systray.AddMenuItem("", "Battery level")
+	a.mBattery = systray.AddMenuItem("", "")
 	a.mBattery.Disable()
 	a.mBattery.Hide()
-	a.mEqParent = systray.AddMenuItem("EQ Preset", "Switch EQ")
-	a.mEq[0] = a.mEqParent.AddSubMenuItem("Slot 1", "EQ Slot 1")
-	a.mEq[1] = a.mEqParent.AddSubMenuItem("Slot 2", "EQ Slot 2")
-	a.mEq[2] = a.mEqParent.AddSubMenuItem("Slot 3", "EQ Slot 3")
+	a.mEqParent = systray.AddMenuItem("EQ Preset", "")
+	a.mEq[0] = a.mEqParent.AddSubMenuItem("Slot 1", "")
+	a.mEq[1] = a.mEqParent.AddSubMenuItem("Slot 2", "")
+	a.mEq[2] = a.mEqParent.AddSubMenuItem("Slot 3", "")
 	a.mEqParent.Hide()
-	a.mLightTog = systray.AddMenuItem("RGB: Off", "Toggle RGB lighting")
+	a.mLightTog = systray.AddMenuItem("RGB: Off", "")
 	a.mLightTog.Hide()
-	a.mMNCTog = systray.AddMenuItem("Mic Noise Cancellation: Off", "Toggle MNC")
+	a.mMNCTog = systray.AddMenuItem("Mic Noise Cancellation: Off", "")
 	a.mMNCTog.Hide()
-	a.mSidetone = systray.AddMenuItem("Sidetone: 0%", "Adjust sidetone")
+	a.mSidetone = systray.AddMenuItem("Sidetone: 0%", "")
 	for i := 0; i <= 10; i++ {
-		a.mSidetoneLvl[i] = a.mSidetone.AddSubMenuItem(fmt.Sprintf("%d%%", i*10), fmt.Sprintf("Set sidetone to %d%%", i*10))
+		a.mSidetoneLvl[i] = a.mSidetone.AddSubMenuItem(fmt.Sprintf("%d%%", i*10), "")
 	}
 	a.mSidetone.Hide()
 
 	systray.AddSeparator()
 
 	// ── Display ──
-	mDisp := systray.AddMenuItem("Tray Display", "Change tray display")
-	a.mDispText = mDisp.AddSubMenuItem("Text", "Text label in tray")
-	a.mDispBlack = mDisp.AddSubMenuItem("Black Icon", "Black tray icon")
-	a.mDispWhite = mDisp.AddSubMenuItem("White Icon", "White tray icon")
+	mDisp := systray.AddMenuItem("Tray Display", "")
+	a.mDispText = mDisp.AddSubMenuItem("Text", "")
+	a.mDispBlack = mDisp.AddSubMenuItem("Black Icon", "")
+	a.mDispWhite = mDisp.AddSubMenuItem("White Icon", "")
 	a.updateDispCheck()
 
 	// ── Utility ──
-	a.mConfigDir = systray.AddMenuItem("Open Config Folder", "Open config directory")
-	a.mReload = systray.AddMenuItem("Reload Config", "Reload config from disk")
+	a.mConfigDir = systray.AddMenuItem("Open Config Folder", "")
+	a.mReload = systray.AddMenuItem("Reload Config", "")
 
 	systray.AddSeparator()
-	a.mQuit = systray.AddMenuItem("Quit", "Exit scape-ctl")
+	a.mQuit = systray.AddMenuItem("Quit", "")
 
 	// Start click handlers
 	go a.handleClicks()
@@ -308,7 +308,6 @@ func (a *App) toggleMNC() {
 		a.mncOn = on
 		a.mu.Unlock()
 		a.updateMNCStatus(on)
-		log.Printf("[tray] MNC %v", on)
 	}
 }
 
