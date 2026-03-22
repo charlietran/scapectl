@@ -1,209 +1,361 @@
 # scape-ctl
 
-System tray controller + CLI for the **Fractal Design Scape** wireless headset.
+System tray controller + CLI for the **Fractal Design Scape** wireless gaming headset.
 
 Replaces the browser-only [Adjust Pro](https://adjust.fractal-design.com) web app
-with a native, always-running desktop app that can also trigger scripts when the
-headset connects or disconnects.
+with a native, always-running desktop app. Features:
 
-```
-┌──────────────────────────────────────┐
-│          System Tray Menu            │
-│  ● Scape Dark                        │
-│  🔋 Battery: 78%                     │
-│  ─────────────────                   │
-│  EQ Preset  ▸ ① Balance              │
-│               ② Clarity              │
-│               ③ Depth                │
-│  Lighting   ▸ Off / On               │
-│  ─────────────────                   │
-│  List Devices                        │
-│  Edit Config                         │
-│  ─────────────────                   │
-│  Quit                                │
-└──────────────────────────────────────┘
-```
-
-## Status
-
-**Pre-alpha / protocol discovery phase.** The HID command bytes in
-`internal/hid/protocol.go` are all `0x00` placeholders. You need to sniff the
-real protocol from the Adjust Pro web app to fill them in. See the
-[Reverse Engineering](#reverse-engineering) section below.
-
-## Architecture
-
-```
-cmd/scape-ctl/main.go          Entry point: CLI subcommands + tray launch
-internal/
-  hid/
-    protocol.go                 Wire protocol: constants, report builders/parsers
-    device.go                   hidapi wrapper: open, send, receive
-  monitor/
-    monitor.go                  USB bus poller: detects connect/disconnect
-  triggers/
-    triggers.go                 Runs user scripts on device events
-  config/
-    config.go                   TOML config: ~/.config/scape-ctl/config.toml
-  tray/
-    tray.go                     System tray menu and click handlers
-tools/
-  webhid_sniffer.js             Chrome DevTools script for capturing HID traffic
-```
-
-## Prerequisites
-
-- **Go 1.22+**
-- **hidapi** system library:
-  - Debian/Ubuntu: `sudo apt install libhidapi-dev`
-  - Fedora: `sudo dnf install hidapi-devel`
-  - macOS: `brew install hidapi`
-  - Windows: bundled with go-hid
-- **Linux only**: udev rule for non-root access (see below)
+- Battery level, EQ preset switching, RGB on/off, mic noise cancellation toggle
+- Real-time headset connection/disconnection detection
+- Trigger scripts on headset power on/off (e.g. switch audio output)
+- System tray with live status updates
 
 ## Install
 
+### From source
+
 ```bash
-# Clone and build
 git clone https://github.com/charlietran/scape-ctl
 cd scape-ctl
 make build
-
-# (Linux) Install udev rule for non-root HID access
-make udev
-# OR manually:
-sudo cp 50-fractal.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules && sudo udevadm trigger
-
-# Install binary
-sudo make install
 ```
+
+#### System dependencies
+
+- **Go 1.22+**
+- **macOS**: `brew install hidapi`
+- **Linux**: `sudo apt install libhidapi-dev libudev-dev libayatana-appindicator3-dev libgtk-3-dev`
+- **Windows**: hidapi is bundled by go-hid
 
 ## Usage
 
-### System tray app (default)
+### System tray (default)
 
 ```bash
-scape-ctl
+./scape-ctl
 ```
-
-Runs in the system tray with battery status, EQ switching, and lighting
-controls. Also starts the device monitor and trigger system.
 
 ### CLI commands
 
 ```bash
-scape-ctl devices      # List all connected Fractal HID devices
-scape-ctl status       # Print battery, firmware, connection info
-scape-ctl sniff        # Continuously print all incoming HID data
-scape-ctl raw 01 02 ff # Send arbitrary HID bytes (for protocol discovery)
+./scape-ctl status       # Print battery, firmware, EQ slot, mic, connection info
+./scape-ctl devices      # List connected Fractal HID devices
+./scape-ctl sniff        # Continuously print incoming HID data
+./scape-ctl raw 02 f1 21 # Send arbitrary HID bytes
 ```
+
+## macOS Setup
+
+### Security permissions
+
+macOS requires explicit permission for apps to access HID devices. On first run you may see a "not permitted" error.
+
+**Grant Input Monitoring access:**
+
+1. Open **System Settings** → **Privacy & Security** → **Input Monitoring**
+2. Click **+** and navigate to the `scape-ctl` binary
+3. Toggle it **on**
+
+> **Note:** If you rebuild the binary, macOS may revoke the permission. You'll need to remove and re-add it.
+
+**Bypass Gatekeeper (unsigned binary):**
+
+If macOS blocks the binary with "cannot be opened because the developer cannot be verified":
+
+```bash
+xattr -d com.apple.quarantine ./scape-ctl
+```
+
+### Run at login
+
+To start scape-ctl automatically when you log in, create a Launch Agent:
+
+```bash
+mkdir -p ~/Library/LaunchAgents
+
+cat > ~/Library/LaunchAgents/com.scape-ctl.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.scape-ctl</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/scape-ctl</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/scape-ctl.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/scape-ctl.log</string>
+</dict>
+</plist>
+EOF
+```
+
+Update the path in `ProgramArguments` if you installed the binary elsewhere.
+
+Load it immediately (or it will start on next login):
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.scape-ctl.plist
+```
+
+To stop and remove:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.scape-ctl.plist
+rm ~/Library/LaunchAgents/com.scape-ctl.plist
+```
+
+## Windows Setup
+
+### Security permissions
+
+Windows may show a "Windows protected your PC" SmartScreen warning for unsigned binaries.
+
+Click **More info** → **Run anyway** to allow it.
+
+### Run at login
+
+**Option 1: Startup folder**
+
+1. Press `Win+R`, type `shell:startup`, press Enter
+2. Create a shortcut to `scape-ctl.exe` in the folder that opens
+
+**Option 2: Task Scheduler (runs hidden)**
+
+1. Open **Task Scheduler** (`taskschd.msc`)
+2. Click **Create Basic Task**
+3. Name: `scape-ctl`, Trigger: **When I log on**
+4. Action: **Start a program**, browse to `scape-ctl.exe`
+5. Check **Open the Properties dialog** → on the General tab, select **Run whether user is logged on or not** if you want it fully hidden
+
+## Linux Setup
+
+### udev rule
+
+Required for non-root HID access:
+
+```bash
+make udev
+# OR manually:
+sudo cp 50-fractal.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+### Run at login
+
+**Using systemd user service:**
+
+```bash
+mkdir -p ~/.config/systemd/user
+
+cat > ~/.config/systemd/user/scape-ctl.service << 'EOF'
+[Unit]
+Description=Fractal Scape headset controller
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/scape-ctl
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user enable --now scape-ctl
+```
+
+To check status: `systemctl --user status scape-ctl`
+
+To stop: `systemctl --user disable --now scape-ctl`
+
+## Configuration
+
+Config file location:
+- **macOS**: `~/Library/Application Support/scape-ctl/config.toml`
+- **Linux**: `~/.config/scape-ctl/config.toml`
+
+A default config with comments is created on first run. See `config.example.toml` for all options.
 
 ## Triggers
 
-Configure scripts in `~/.config/scape-ctl/config.toml` to run when the headset
-connects or disconnects:
+Run scripts automatically when the headset powers on/off or the dongle is plugged/unplugged.
 
 ```toml
 [[triggers]]
-event   = "Connected"
-script  = "pactl set-default-sink alsa_output.usb-Fractal_Design_Scape"
-label   = "Switch audio to Scape"
+event   = "HeadsetPowerOn"
+script  = "osascript -e 'display notification \"Headset connected\" with title \"Scape\"'"
+label   = "Headset on notification"
 enabled = true
 
 [[triggers]]
-event   = "Disconnected"
-script  = "pactl set-default-sink alsa_output.pci-0000_00_1f.3.analog-stereo"
-label   = "Switch to speakers"
+event   = "HeadsetPowerOff"
+script  = "osascript -e 'display notification \"Headset disconnected\" with title \"Scape\"'"
+label   = "Headset off notification"
 enabled = true
 ```
+
+Available events: `DongleConnected`, `DongleDisconnected`, `HeadsetPowerOn`, `HeadsetPowerOff`
 
 Scripts receive environment variables:
 
 | Variable          | Example                          |
 |-------------------|----------------------------------|
-| `SCAPE_EVENT`     | `Connected`                      |
+| `SCAPE_EVENT`     | `HeadsetPowerOn`                 |
 | `SCAPE_DEVICE`    | `Fractal Scape Dongle`           |
 | `SCAPE_VID`       | `36bc`                           |
-| `SCAPE_PID`       | `1002`                           |
-| `SCAPE_PATH`      | `/dev/hidraw3`                   |
-| `SCAPE_TIMESTAMP` | `2026-03-21T14:30:00Z`           |
+| `SCAPE_PID`       | `0001`                           |
+| `SCAPE_PATH`      | `DevSrvsID:4295080900`           |
+| `SCAPE_TIMESTAMP` | `2026-03-21T14:30:00-07:00`      |
 | `SCAPE_JSON`      | Full event as JSON               |
 
-See `config.example.toml` for more examples.
+## USB HID Protocol Reference
 
-## Reverse Engineering
+Reverse-engineered from WebHID sniffer captures and the Fractal Adjust Pro Electron app source. This section documents the protocol for anyone building their own tools.
 
-The protocol bytes need to be captured from the official Adjust Pro web app.
-Here's the workflow:
+### Device Identifiers
 
-### Step 1: Identify your device
+| Device | VID | PID | Notes |
+|--------|-----|-----|-------|
+| Fractal Scape Dongle | `0x36BC` | `0x0001` | 2.4 GHz USB wireless receiver |
+| Fractal Scape (wired) | `0x36BC` | TBD | USB-C direct connection |
+| Adjust Pro Hub | `0x36BC` | `0x1001` | Fan/RGB controller (different product) |
 
-```bash
-lsusb -d 36bc:
-# Example output:
-# Bus 003 Device 005: ID 36bc:1002 Fractal Scape Dongle
+### HID Transport
+
+- **Report ID**: 2 (all commands use report ID 2)
+- **Payload size**: 63 bytes (report ID excluded)
+- **Transport**: Output reports (`sendReport`, not feature reports)
+- **Collection**: usagePage `0xFF00`, usage 1 (vendor-specific, collection index 3)
+- **Response pattern**: all responses echo the first 2 command bytes
+
+The dongle exposes 4 HID collections. Only collection 3 (usagePage `0xFF00`) is used for the control protocol. The others are Consumer Control (media keys), vendor `0xFF13` (unknown), and Telephony (call buttons).
+
+### Architecture: Dongle vs Headset
+
+The dongle acts as a wireless relay. Commands prefixed `0x11` are handled by the dongle directly (instant response). Commands prefixed `0xF1` are relayed to the headset (slower, may timeout if headset is off).
+
+The Adjust Pro web app treats these as two separate "devices" internally:
+- **Dongle controller** (`DEVICE_TYPE_FACTORY_DONGLE = 0x11`): queries dongle state, checks headset presence
+- **Headset delegate** (`DEVICE_TYPE_FACTORY_HEADSET = 0xF1`): queries headset status, controls EQ/mic/lighting
+
+### Command Reference
+
+#### 0x11 — Dongle Commands
+
+| Command | Description | Response |
+|---------|-------------|----------|
+| `11 01` | Dongle firmware version | `11 01 00 <major> <minor>` |
+| `11 02` | Dongle serial number | `11 02 00 <ASCII string, null-terminated>` |
+| `11 21` | Dongle state poll | `11 21 00 <headset_present> ...` (byte 3: 0/1) |
+
+`11 21` responds instantly and is used for fast headset presence detection. However, byte 3 can flap between 0 and 1 in a periodic pattern (~3 tick cycle) so it requires debouncing.
+
+#### 0xF1 — Headset Commands
+
+| Command | Description | Response |
+|---------|-------------|----------|
+| `f1 01` | Headset firmware version | `f1 01 00 <major> <minor>` |
+| `f1 02` | Headset serial number | `f1 02 00 <ASCII string, null-terminated>` |
+| `f1 05` | Headset info | `f1 05 <data...>` |
+| `f1 21` | Full status poll | 63-byte status blob (see below) |
+| `f1 34 XX YY` | Set mic parameter | `XX`=parameter, `YY`=value |
+| `f1 36 01` | Enable MNC | Mic Noise Cancellation on |
+| `f1 36 00` | Disable MNC | Mic Noise Cancellation off |
+
+**`f1 21` Status Blob** (from Electron app `getUpdatedDeviceState`):
+
+| Byte | Field | Values |
+|------|-------|--------|
+| 0-1 | Echo | `f1 21` |
+| 2 | Status | 0 = OK |
+| 3 | Boom mic | 0 = attached, nonzero = detached |
+| 4 | Muted | 0 = unmuted, nonzero = muted (boom up) |
+| 5 | EQ slot | 1-3 |
+| 6 | Lighting slot | 0 = off, 1+ = active |
+| 7-8 | Chat volume | |
+| 9-10 | Game volume | |
+| 11 | Volume state | |
+| 12 | BT mode | |
+| 13 | Hall sensor | Boom mic position sensor |
+| 14 | Battery | 0-100 (%) |
+| 15 | Sidetone state | 1 = on |
+| 16-17 | Sidetone volume | |
+| 18 | BT connection | 1 = connected |
+| 19 | MNC (ENC) | 1 = on |
+| 20 | Power state | 1 = on |
+| 33 | Dynamic lighting | |
+| 40 | WDL opt-in | Windows Dynamic Lighting |
+
+#### 0xA4 — Config Transfer & Lighting
+
+| Command | Description |
+|---------|-------------|
+| `a4 01 01 NN SS CC` | Begin config write (length, segments) |
+| `a4 02 3c <60 bytes>` | Config data chunk (0x3c = 60 bytes) |
+| `a4 03` | End config write |
+| `a4 04 00` | Select effect slot 0 (RGB off) |
+| `a4 04 01` | Select effect slot 1 (RGB on) |
+| `a4 05 01 00 00` | Read current config/state |
+| `a4 0e 99` | Keepalive heartbeat |
+
+Lighting themes are uploaded as bulk data via `a4 01`/`a4 02`/`a4 03`. Simple on/off uses `a4 04`.
+
+#### 0xA5 — Lighting Brightness/Color Upload
+
+| Command | Description |
+|---------|-------------|
+| `a5 f0 00 ff` | Begin brightness/color upload |
+| `a5 01 00 ff <data>` | Data chunk |
+| `a5 f1 00 ff` | End upload |
+
+#### 0xA7 — DSP / Audio (EQ)
+
+| Command | Description |
+|---------|-------------|
+| `a7 01 XX 01 YY` | Init DSP slot (`XX`: 0x17/0x27/0x37 for driver 1/2/3) |
+| `a7 02 NN DD PP <5×f32>` | Set biquad coefficients (LE float32) |
+| `a7 03 DD 02 00 <UUID>` | Set driver config with preset UUID |
+| `a7 04 DD 00/01` | Enable/disable feature per driver |
+| `a7 05 NN DD PP` | Set parameter per driver/band |
+| `a7 07 DD` | Select EQ slot / apply driver config |
+
+**EQ Architecture:**
+- 3 preset slots, each with up to 5 parametric EQ bands
+- Each band: frequency (Hz), Q factor, gain (dB), filter type
+- Filter types: 0 = peaking, 1 = low shelf, 2 = high shelf
+- Biquad coefficients (IIR second-order sections) are pre-computed per sampling rate
+- Driver IDs: 1, 2, 4 (corresponding to different audio paths/sample rates)
+- Coefficients per band: `EqCoefA = [a1, a2]`, `EqCoefB = [b0, b1, b2]`
+- Switching EQ slots re-uploads all coefficients — `a7 07 <slot>` selects which slot is active
+
+**EQ Code Format** (shareable preset strings from the web app):
+- Base64-encoded binary: `[version=1][numPoints][15 bytes per band][XOR checksum]`
+- Per band (15 bytes): `[filterType:u8][gain:f32 LE][Q:f32 LE][freq:u16 LE][4 bytes padding]`
+- Checksum: XOR of all preceding bytes
+
+### Polling Sequence
+
+The Adjust Pro web app polls in this sequence every ~1.5 seconds:
+
+```
+11 21  →  dongle state (instant)
+f1 21  →  headset status (relayed, ~60ms when online, timeout when offline)
 ```
 
-Note the product ID and update `PIDScapeDongle` in `internal/hid/protocol.go`.
+A keepalive (`a4 0e 99`) is sent periodically to maintain the HID session.
 
-### Step 2: Sniff WebHID traffic
+### Reverse Engineering Tools
 
-1. Open <https://adjust.fractal-design.com> in Chrome
-2. Open DevTools (F12) → Console
-3. Paste `tools/webhid_sniffer.js` and press Enter
-4. Click "Add Fractal USB Device" and connect
-5. Exercise each feature one at a time:
-   - Switch each EQ preset → note which bytes change
-   - Adjust each EQ band → note the encoding
-   - Toggle each lighting mode → note mode bytes
-   - Change colors / brightness / speed
-   - Check the battery display vs. incoming reports
-6. Add annotations: `scapeNote("switched to EQ slot 2")`
-7. Export: `scapeExport()` downloads the full log as JSON
-
-### Step 3: Read the JavaScript
-
-The web app's JS bundle contains the complete protocol:
-
-1. DevTools → Sources → find `adjust.fractal-design.com` JS chunks
-2. Pretty-print (click `{}`) and search for:
-   - `sendReport` / `sendFeatureReport` → reveals transport method
-   - `0x36bc` or `36bc` → reveals VID/PID filters
-   - Array literals with hex values → command payloads
-3. OR grab the offline Electron app (Settings tab in Adjust Pro):
-   ```bash
-   npx asar extract resources/app.asar unpacked/
-   grep -rn "sendReport\|sendFeatureReport\|0x36bc" unpacked/
-   ```
-
-### Step 4: Fill in protocol.go
-
-Update the `TODO(sniff)` constants in `internal/hid/protocol.go` with
-discovered values. The report builders and parsers already have the right
-structure — you just need the actual byte values.
-
-### Step 5: Test with the CLI
-
-```bash
-# Verify communication works
-make build
-./scape-ctl raw 00 01 02   # send bytes, see response
-./scape-ctl sniff           # watch incoming data
-./scape-ctl status          # test status parser
-```
-
-## Tips
-
-- The **dongle** and **wired headset** may present as different USB devices with
-  different PIDs and possibly different HID interfaces. The dongle relays
-  commands to the headset wirelessly.
-- **Feature reports** vs **output reports**: the sniffer logs both. Check whether
-  the web app uses `sendReport` (output) or `sendFeatureReport` (feature) and
-  update the `Transport` variable in `protocol.go`.
-- **Don't send firmware commands** — look for them in the sniff log and avoid
-  those report IDs / command bytes during testing.
-- The headset stores settings in internal memory. Writes persist across reboots.
+- `tools/webhid_sniffer.js` — Paste into Chrome DevTools on adjust.fractal-design.com to capture all HID traffic with annotations
+- The offline Electron app can be unpacked with `npx asar extract resources/app.asar unpacked/` for browseable JS source
 
 ## License
 
