@@ -11,48 +11,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-linux-windows:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
-      - name: Get version from tag
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-
-      - name: Build Linux
-        run: |
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-            go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
-            -o scape-ctl_linux_amd64/scape-ctl ./cmd/scape-ctl
-          cp README.md config.example.toml 50-fractal.rules scape-ctl_linux_amd64/
-          tar -czf scape-ctl_linux_amd64.tar.gz scape-ctl_linux_amd64
-
-      - name: Build Windows
-        run: |
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
-            go build -ldflags "-s -w -H windowsgui -X main.version=${{ steps.version.outputs.version }}" \
-            -o scape-ctl_windows_amd64/scape-ctl.exe ./cmd/scape-ctl
-          cp README.md config.example.toml scape-ctl_windows_amd64/
-          cd scape-ctl_windows_amd64 && zip -r ../scape-ctl_windows_amd64.zip . && cd ..
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scape-ctl_linux_amd64
-          path: scape-ctl_linux_amd64.tar.gz
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scape-ctl_windows_amd64
-          path: scape-ctl_windows_amd64.zip
-
-  build-macos:
+  build:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,10 +24,9 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build macOS
+      - name: Build macOS (arm64)
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-
           CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
             go build -ldflags "-s -w -X main.version=${VERSION}" \
             -o scape-ctl ./cmd/scape-ctl
@@ -107,32 +65,32 @@ jobs:
           PLIST
 
           sed -i '' "s/VERSION_PLACEHOLDER/${VERSION}/g" "Scape Control.app/Contents/Info.plist"
-
-          # Package as zip (preserves .app bundle structure)
           zip -r scape-ctl_darwin_arm64.zip "Scape Control.app"
 
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: scape-ctl_darwin_arm64
-          path: scape-ctl_darwin_arm64.zip
+      - name: Build Linux (amd64)
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -ldflags "-s -w -X main.version=${{ steps.version.outputs.version }}" \
+            -o scape-ctl_linux_amd64/scape-ctl ./cmd/scape-ctl
+          cp README.md config.example.toml 50-fractal.rules scape-ctl_linux_amd64/
+          tar -czf scape-ctl_linux_amd64.tar.gz scape-ctl_linux_amd64
 
-  release:
-    needs: [build-linux-windows, build-macos]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
+      - name: Build Windows (amd64)
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
+            go build -ldflags "-s -w -H windowsgui -X main.version=${{ steps.version.outputs.version }}" \
+            -o scape-ctl_windows_amd64/scape-ctl.exe ./cmd/scape-ctl
+          cp README.md config.example.toml scape-ctl_windows_amd64/
+          cd scape-ctl_windows_amd64 && zip -r ../scape-ctl_windows_amd64.zip . && cd ..
 
       - name: Generate checksums
-        run: cd dist && sha256sum * > checksums.txt
+        run: shasum -a 256 *.tar.gz *.zip > checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            dist/*
+            *.tar.gz
+            *.zip
+            checksums.txt
