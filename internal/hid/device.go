@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	usbhid "github.com/sstallion/go-hid"
+	"github.com/charlietran/scape-ctl/internal/usbhid"
 )
 
 // Verbose controls whether debug-level log messages are printed.
@@ -35,79 +35,73 @@ func (d DeviceInfo) String() string {
 
 // Device is an open connection to a Fractal Scape HID device.
 type Device struct {
-	dev         *usbhid.Device
-	Info        DeviceInfo
-	nonBlocking bool
+	dev  *usbhid.Device
+	Info DeviceInfo
 }
 
 // Enumerate finds Fractal Design HID devices, returning only the
 // vendor-specific control interface (usagePage 0xFF00) for each device.
 func Enumerate() ([]DeviceInfo, error) {
-	var devices []DeviceInfo
-
-	err := usbhid.Enumerate(FractalVendorID, 0x0000, func(info *usbhid.DeviceInfo) error {
-		// Only return the vendor protocol collection (usagePage 0xFF00).
-		// Each physical device exposes multiple HID collections; we only
-		// want the one we can send commands to.
-		if info.UsagePage != UsagePageVendor {
-			return nil
-		}
-		product := "(unknown)"
-		if info.ProductStr != "" {
-			product = info.ProductStr
-		}
-		devices = append(devices, DeviceInfo{
-			VendorID:    uint16(info.VendorID),
-			ProductID:   uint16(info.ProductID),
-			ProductName: product,
-			Serial:      info.SerialNbr,
-			Path:        info.Path,
-			Interface:   info.InterfaceNbr,
-			UsagePage:   info.UsagePage,
-		})
-		return nil
+	devices, err := usbhid.Enumerate(func(d *usbhid.Device) bool {
+		return d.VendorId() == FractalVendorID && d.UsagePage() == UsagePageVendor
 	})
 	if err != nil {
 		return nil, fmt.Errorf("hid enumerate: %w", err)
 	}
-	return devices, nil
+
+	var result []DeviceInfo
+	for _, d := range devices {
+		product := d.Product()
+		if product == "" {
+			product = "(unknown)"
+		}
+		result = append(result, DeviceInfo{
+			VendorID:    d.VendorId(),
+			ProductID:   d.ProductId(),
+			ProductName: product,
+			Serial:      d.SerialNumber(),
+			Path:        d.Path(),
+			UsagePage:   d.UsagePage(),
+		})
+	}
+	return result, nil
 }
 
 // OpenPath opens a device by its OS device path.
 func OpenPath(path string) (*Device, error) {
-	setNonExclusive() // platform-specific: allows OS to keep receiving volume/media keys
-	dev, err := usbhid.OpenPath(path)
+	// Find the device by path
+	devices, err := usbhid.Enumerate(func(d *usbhid.Device) bool {
+		return d.Path() == path
+	})
 	if err != nil {
+		return nil, fmt.Errorf("hid enumerate for open: %w", err)
+	}
+	if len(devices) == 0 {
+		return nil, fmt.Errorf("hid device not found: %s", path)
+	}
+
+	dev := devices[0]
+	// Open non-exclusive so OS still receives volume/media key reports
+	if err := dev.Open(false); err != nil {
 		return nil, fmt.Errorf("hid open %s: %w", path, err)
 	}
 
-	// Get device info
-	info := DeviceInfo{Path: path}
-	if product, err := dev.GetProductStr(); err == nil {
-		info.ProductName = product
+	info := DeviceInfo{
+		VendorID:    dev.VendorId(),
+		ProductID:   dev.ProductId(),
+		ProductName: dev.Product(),
+		Serial:      dev.SerialNumber(),
+		Path:        dev.Path(),
+		UsagePage:   dev.UsagePage(),
 	}
-	if serial, err := dev.GetSerialNbr(); err == nil {
-		info.Serial = serial
-	}
-	devInfo, _ := dev.GetDeviceInfo()
-	if devInfo != nil {
-		info.VendorID = uint16(devInfo.VendorID)
-		info.ProductID = uint16(devInfo.ProductID)
-	}
-
-	d := &Device{dev: dev, Info: info}
-
-	// Non-blocking so reads don't hang
-	if err := dev.SetNonblock(true); err != nil {
-		log.Printf("warning: failed to set non-blocking: %v", err)
-	} else {
-		d.nonBlocking = true
+	if info.ProductName == "" {
+		info.ProductName = "(unknown)"
 	}
 
 	if Verbose {
 		log.Printf("[hid] opened device: %s", info)
 	}
-	return d, nil
+	return &Device{dev: dev, Info: info}, nil
 }
 
 // OpenFirst opens the first Fractal device found.
@@ -132,69 +126,93 @@ func (d *Device) Close() {
 
 // ── Low-level I/O ───────────────────────────────────
 
-// Send transmits a report to the device using the configured transport method.
+// Send transmits an output report to the device.
 func (d *Device) Send(reportID byte, payload []byte) error {
-	switch Transport {
-	case TransportOutput:
-		// go-hid Write: first byte is report ID
-		buf := make([]byte, 0, 1+len(payload))
-		buf = append(buf, reportID)
-		buf = append(buf, payload...)
-		_, err := d.dev.Write(buf)
-		return err
+	return d.dev.SetOutputReport(reportID, payload)
+}
 
-	case TransportFeature:
-		buf := make([]byte, 0, 1+len(payload))
-		buf = append(buf, reportID)
-		buf = append(buf, payload...)
-		_, err := d.dev.SendFeatureReport(buf)
-		return err
+// readReport reads the next input report with a timeout. Returns report data
+// (without report ID prefix) or nil on timeout. Uses a single goroutine
+// for the blocking GetInputReport call.
+func (d *Device) readReport(timeout time.Duration) ([]byte, error) {
+	type result struct {
+		data []byte
+		err  error
+	}
 
-	default:
-		return fmt.Errorf("unknown transport method: %d", Transport)
+	ch := make(chan result, 1)
+	go func() {
+		_, data, err := d.dev.GetInputReport()
+		ch <- result{data, err}
+	}()
+
+	select {
+	case r := <-ch:
+		if r.err != nil {
+			return nil, r.err
+		}
+		return r.data, nil
+	case <-time.After(timeout):
+		return nil, nil // timeout, not an error
 	}
 }
 
-// Read reads a response from the device. Returns nil if no data available.
-// The report ID byte is stripped so returned data aligns with the WebHID
-// sniffer log offsets (byte 0 = first command byte, not report ID).
+// Read reads an input report from the device with a timeout.
+// Returns nil if no data available within the timeout.
 func (d *Device) Read(timeout time.Duration) ([]byte, error) {
-	buf := make([]byte, ReportSize+1) // +1 for report ID prefix
-
-	if timeout > 0 {
-		if timeout < time.Millisecond {
-			timeout = time.Millisecond
-		}
-		n, err := d.dev.ReadWithTimeout(buf, timeout)
-		if err != nil {
-			return nil, err
-		}
-		if n <= 1 {
-			return nil, nil
-		}
-		return buf[1:n], nil // strip report ID
-	}
-
-	n, err := d.dev.Read(buf)
-	if err != nil {
-		return nil, err
-	}
-	if n <= 1 {
-		return nil, nil
-	}
-	return buf[1:n], nil // strip report ID
+	return d.readReport(timeout)
 }
 
-// SendAndReceive sends a command and waits for a response.
+// SendAndReceive sends a command and waits for a matching response.
+// Responses are matched by the first 2 bytes (command echo). Unrelated
+// input reports (e.g. unsolicited dongle reports) are discarded.
+// A single reader goroutine is used for the entire operation.
 func (d *Device) SendAndReceive(reportID byte, payload []byte, timeout time.Duration) ([]byte, error) {
 	if err := d.Send(reportID, payload); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
-	resp, err := d.Read(timeout)
-	if err != nil {
-		return nil, fmt.Errorf("read: %w", err)
+
+	type result struct {
+		data []byte
+		err  error
 	}
-	return resp, nil
+
+	ch := make(chan result, 1)
+	done := make(chan struct{})
+
+	// Single goroutine reads reports until we find a match or give up
+	go func() {
+		for {
+			_, data, err := d.dev.GetInputReport()
+			select {
+			case <-done:
+				return
+			default:
+			}
+			if err != nil {
+				ch <- result{nil, err}
+				return
+			}
+			// Match by echo bytes
+			if len(data) >= 2 && len(payload) >= 2 && data[0] == payload[0] && data[1] == payload[1] {
+				ch <- result{data, nil}
+				return
+			}
+			// Not our response — continue reading
+		}
+	}()
+
+	select {
+	case r := <-ch:
+		close(done)
+		if r.err != nil {
+			return nil, fmt.Errorf("read: %w", r.err)
+		}
+		return r.data, nil
+	case <-time.After(timeout):
+		close(done)
+		return nil, errors.New("timeout")
+	}
 }
 
 // ── High-level operations ───────────────────────────
@@ -208,7 +226,7 @@ func (d *Device) GetStatus() (*DeviceStatus, error) {
 	rid, payload := BuildGetStatus()
 	resp, err := d.SendAndReceive(rid, payload, defaultTimeout)
 	if err != nil {
-		if errors.Is(err, usbhid.ErrTimeout) {
+		if err.Error() == "timeout" {
 			return &DeviceStatus{Connected: false, BatteryPercent: -1}, nil
 		}
 		return nil, err
