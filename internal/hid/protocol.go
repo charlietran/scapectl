@@ -234,13 +234,21 @@ func BuildSetLightOn(on bool) (byte, []byte) {
 	return ReportID, buf
 }
 
-// BuildSetSidetone sets the sidetone volume (0-100).
-// Sends [0xF1, 0x34, 0x02, value].
-func BuildSetSidetone(value byte) (byte, []byte) {
+// Sidetone actions (byte 2 of f1 34 command)
+const (
+	SidetoneDisable byte = 0x00
+	SidetoneEnable  byte = 0x01
+	SidetoneVolUp   byte = 0x02
+	SidetoneVolDown byte = 0x03
+)
+
+// BuildSidetoneCmd builds a single sidetone command.
+// Action: 0=disable, 1=enable, 2=volUp, 3=volDown. Value: step amount.
+func BuildSidetoneCmd(action, value byte) (byte, []byte) {
 	buf := make([]byte, ReportSize)
 	buf[0] = CmdSidetone[0]
 	buf[1] = CmdSidetone[1]
-	buf[2] = 0x02
+	buf[2] = action
 	buf[3] = value
 	return ReportID, buf
 }

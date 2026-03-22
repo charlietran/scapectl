@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/getlantern/systray"
 
@@ -44,8 +45,9 @@ type App struct {
 	mMicMute   *systray.MenuItem
 	mMNCTog       *systray.MenuItem
 	mncOn         bool
-	mSidetone     *systray.MenuItem
-	mSidetoneLvl  [11]*systray.MenuItem // 0%, 10%, 20%... 100%
+	mSidetone        *systray.MenuItem
+	mSidetoneLvl     [11]*systray.MenuItem // 0%, 10%, 20%... 100%
+	sidetoneSetAt    time.Time            // when sidetone was last manually set
 	mDispBlack *systray.MenuItem
 	mDispWhite *systray.MenuItem
 	mDispText  *systray.MenuItem
@@ -223,18 +225,21 @@ func (a *App) handleMonitorEvents() {
 			a.mMNCTog.Show()
 			a.updateMNCStatus(s.MNCOn)
 			a.mSidetone.Show()
-			a.updateSidetoneCheck(s.SidetoneVol)
+			// Don't overwrite sidetone UI from stale status data
+			// for 10s after a manual change
+			a.mu.Lock()
+			recentSet := time.Since(a.sidetoneSetAt) < 10*time.Second
+			a.mu.Unlock()
+			if !recentSet {
+				a.updateSidetoneCheck(s.SidetoneVol)
+			}
 		}
 	}
 }
 
-// sendCommand runs a function on the monitor's persistent device connection.
+// sendCommand runs a function on the device while pausing the monitor's polling.
 func (a *App) sendCommand(fn func(dev *hid.Device) error) error {
-	dev := a.mon.Device()
-	if dev == nil {
-		return fmt.Errorf("no device connected")
-	}
-	return fn(dev)
+	return a.mon.RunCommand(fn)
 }
 
 func (a *App) setEq(slot int) {
@@ -341,11 +346,40 @@ func (a *App) updateMNCStatus(on bool) {
 
 func (a *App) setSidetone(pct int) {
 	if err := a.sendCommand(func(dev *hid.Device) error {
-		rid, payload := hid.BuildSetSidetone(byte(pct))
-		return dev.Send(rid, payload)
+		// Max sidetone is 75 steps. Reset to 0 in two chunks with
+		// a status poll between each command (required for the dongle
+		// to relay to the headset).
+		steps := []struct {
+			action byte
+			value  byte
+		}{
+			{hid.SidetoneVolDown, 50},
+			{hid.SidetoneVolDown, 25},
+		}
+		if pct > 0 {
+			// Then go up to target
+			if pct > 50 {
+				steps = append(steps, struct{ action, value byte }{hid.SidetoneVolUp, 50})
+				steps = append(steps, struct{ action, value byte }{hid.SidetoneVolUp, byte(pct - 50)})
+			} else {
+				steps = append(steps, struct{ action, value byte }{hid.SidetoneVolUp, byte(pct)})
+			}
+		}
+		for _, s := range steps {
+			rid, payload := hid.BuildSidetoneCmd(s.action, s.value)
+			if err := dev.Send(rid, payload); err != nil {
+				return err
+			}
+			// Poll between commands — dongle requires this to relay to headset
+			dev.GetStatus()
+		}
+		return nil
 	}); err != nil {
 		log.Printf("[tray] set sidetone error: %v", err)
 	} else {
+		a.mu.Lock()
+		a.sidetoneSetAt = time.Now()
+		a.mu.Unlock()
 		a.updateSidetoneCheck(pct)
 		log.Printf("[tray] sidetone %d%%", pct)
 	}
