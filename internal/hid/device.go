@@ -75,6 +75,7 @@ func Enumerate() ([]DeviceInfo, error) {
 
 // OpenPath opens a device by its OS device path.
 func OpenPath(path string) (*Device, error) {
+	setNonExclusive() // platform-specific: allows OS to keep receiving volume/media keys
 	dev, err := usbhid.OpenPath(path)
 	if err != nil {
 		return nil, fmt.Errorf("hid open %s: %w", path, err)
@@ -198,7 +199,7 @@ func (d *Device) SendAndReceive(reportID byte, payload []byte, timeout time.Dura
 
 // ── High-level operations ───────────────────────────
 
-const defaultTimeout = 100 * time.Millisecond
+const defaultTimeout = 500 * time.Millisecond
 
 // GetStatus sends f1 21 and parses the status blob (battery, connection, etc.).
 // A timeout means the headset is unreachable (off/out of range) — returned as

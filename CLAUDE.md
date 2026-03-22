@@ -58,11 +58,20 @@ On macOS: `brew install hidapi`. On Windows: hidapi is bundled by go-hid.
 
 ## Dependencies
 
-- `github.com/sstallion/go-hid` — Go bindings for hidapi (CGO, links libhidapi)
+- `github.com/sstallion/go-hid` — Go bindings for hidapi (CGO, links libhidapi). PLANNED: migrate to `github.com/rafaelmartins/usbhid` (pure Go, no CGO, async input reports via IOKit callbacks on macOS)
 - `github.com/getlantern/systray` — Cross-platform system tray
 - `github.com/pelletier/go-toml/v2` — TOML parser
 
-CGO is required because go-hid wraps the C hidapi library. Cross-compilation needs the target platform's hidapi headers/libs.
+CGO is currently required because go-hid wraps the C hidapi library. Cross-compilation needs the target platform's hidapi headers/libs.
+
+## Key Architecture Notes
+
+- Monitor keeps a persistent HID connection and polls f1 21 every 1.5s
+- Tray commands use monitor.RunCommand() which locks devMu to prevent interleaving with polls
+- Sidetone requires interleaved status polls between f1 34 commands (dongle firmware requirement)
+- The dongle caches f1 21 responses for ~10s — state changes from the headset (mute, MNC) are delayed. This is a hidapi limitation; WebHID doesn't have it.
+- 11 21 byte 3 (headset present) is unreliable — flaps in a 3-tick cycle. Use f1 21 byte 18 for presence.
+- macOS: must open device non-exclusive (SetOpenExclusive(false)) or volume/media keys stop working
 
 ## Reverse Engineering Workflow
 
