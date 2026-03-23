@@ -5,6 +5,7 @@ package monitor
 import (
 	"fmt"
 	"log"
+	"runtime"
 	"sync"
 	"time"
 
@@ -198,41 +199,61 @@ func (m *Monitor) poll() {
 	ticker := time.NewTicker(m.interval)
 	defer ticker.Stop()
 
+	memTicker := time.NewTicker(30 * time.Second)
+	defer memTicker.Stop()
+
 	for {
 		select {
 		case <-m.stop:
 			return
 		case <-ticker.C:
 			m.tick()
+		case <-memTicker.C:
+			var ms runtime.MemStats
+			runtime.ReadMemStats(&ms)
+			log.Printf("[mem] heap=%dMB sys=%dMB goroutines=%d",
+				ms.HeapAlloc/1024/1024, ms.Sys/1024/1024, runtime.NumGoroutine())
 		}
 	}
 }
 
 func (m *Monitor) tick() {
-	m.scanBus()
-
 	m.mu.Lock()
-	hasDongle := len(m.known) > 0
+	hasDevice := m.dev != nil
 	m.mu.Unlock()
 
-	if !hasDongle {
-		return
-	}
+	// Only enumerate when we don't have an open device connection.
+	// When connected, we detect disconnect via HID I/O errors instead.
+	if !hasDevice {
+		m.scanBus()
 
-	m.ensureConnected()
+		m.mu.Lock()
+		hasDongle := len(m.known) > 0
+		m.mu.Unlock()
+		if !hasDongle {
+			return
+		}
+
+		m.ensureConnected()
+
+		m.mu.Lock()
+		hasDevice = m.dev != nil
+		m.mu.Unlock()
+		if !hasDevice {
+			return
+		}
+	}
 
 	m.mu.Lock()
 	dev := m.dev
 	m.mu.Unlock()
 
-	if dev == nil {
-		return
-	}
-
 	m.devMu.Lock()
 	m.pollHeadsetStatus(dev)
 
-	// pollHeadsetStatus may have closed dev on error — recheck
+	// pollHeadsetStatus may have closed dev on error — recheck.
+	// If the device was closed, run scanBus on the next tick to
+	// detect whether the dongle was unplugged.
 	m.mu.Lock()
 	stillOpen := m.dev == dev
 	m.mu.Unlock()

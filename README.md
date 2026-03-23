@@ -206,13 +206,11 @@ Run scripts automatically on device events. Add `[[triggers]]` entries to your c
 [[triggers]]
 event   = "HeadsetPowerOn"
 script  = "osascript -e 'display notification \"Headset connected\" with title \"Scape\"'"
-label   = "Headset on notification"
 enabled = true
 
 [[triggers]]
 event   = "HeadsetPowerOff"
 script  = "osascript -e 'display notification \"Headset disconnected\" with title \"Scape\"'"
-label   = "Headset off notification"
 enabled = true
 ```
 
@@ -220,43 +218,42 @@ enabled = true
 
 Automatically switch your default audio output when the headset powers on/off. This requires a command-line audio switching tool.
 
+> **Note:** Trigger scripts run without a login shell, so tools may not be on `PATH`. Use the full path to the executable in your trigger scripts. Run `which SwitchAudioSource` (macOS) or `where nircmd` (Windows) to find it.
+
 **macOS** — install [SwitchAudioSource](https://github.com/deweller/switchaudio-osx):
 
 ```bash
 brew install switchaudio-osx
-SwitchAudioSource -a   # list available devices
+which SwitchAudioSource  # e.g. /opt/homebrew/bin/SwitchAudioSource
+SwitchAudioSource -a     # list available devices
 ```
 
 ```toml
 [[triggers]]
 event    = "HeadsetPowerOn"
-script   = "SwitchAudioSource -s 'Fractal Design Scape'"
-label    = "Switch audio to headset"
+script   = "/opt/homebrew/bin/SwitchAudioSource -s 'Fractal Design Scape'"
 enabled  = true
 cooldown = 5
 
 [[triggers]]
 event    = "HeadsetPowerOff"
-script   = "SwitchAudioSource -s 'MacBook Pro Speakers'"
-label    = "Switch audio to speakers"
+script   = "/opt/homebrew/bin/SwitchAudioSource -s 'MacBook Pro Speakers'"
 enabled  = true
 cooldown = 5
 ```
 
-**Windows** — download [NirCmd](https://www.nirsoft.net/utils/nircmd.html) (free, single `.exe`, no install required):
+**Windows** — download [NirCmd](https://www.nirsoft.net/utils/nircmd.html) (free, single `.exe`, no install required). Place it somewhere permanent and use the full path:
 
 ```toml
 [[triggers]]
 event    = "HeadsetPowerOn"
-script   = "nircmd setdefaultsounddevice \"Fractal Design Scape\" 1"
-label    = "Switch audio to headset"
+script   = "C:\\Tools\\nircmd.exe setdefaultsounddevice \"Fractal Design Scape\" 1"
 enabled  = true
 cooldown = 5
 
 [[triggers]]
 event    = "HeadsetPowerOff"
-script   = "nircmd setdefaultsounddevice \"Speakers\" 1"
-label    = "Switch audio to speakers"
+script   = "C:\\Tools\\nircmd.exe setdefaultsounddevice \"Speakers\" 1"
 enabled  = true
 cooldown = 5
 ```
@@ -272,14 +269,12 @@ wpctl status             # list devices (PipeWire)
 [[triggers]]
 event    = "HeadsetPowerOn"
 script   = "pactl set-default-sink alsa_output.usb-Fractal_Design_Scape"
-label    = "Switch audio to headset"
 enabled  = true
 cooldown = 5
 
 [[triggers]]
 event    = "HeadsetPowerOff"
 script   = "pactl set-default-sink alsa_output.pci-0000_00_1f.3.analog-stereo"
-label    = "Switch audio to speakers"
 enabled  = true
 cooldown = 5
 ```

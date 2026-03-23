@@ -103,6 +103,7 @@ type App struct {
 	mDispIcon    *systray.MenuItem // macOS only: template icon (auto light/dark)
 	mDispWhite   *systray.MenuItem // Linux only: white icon
 	mDispText    *systray.MenuItem // macOS + Linux: text label
+	mTriggers    *systray.MenuItem
 	mAutostart   *systray.MenuItem
 	mConfigDir   *systray.MenuItem
 	mReload      *systray.MenuItem
@@ -175,7 +176,9 @@ func (a *App) OnReady() {
 	}
 
 	// ── Utility ──
-	a.mAutostart = systray.AddMenuItem("", "")
+	a.mTriggers = systray.AddMenuItem("Trigger Scripts", "")
+	a.updateTriggersCheck()
+	a.mAutostart = systray.AddMenuItem("Launch at Login", "")
 	a.updateAutostartCheck()
 	a.mConfigDir = systray.AddMenuItem("Open Config Folder", "")
 	a.mReload = systray.AddMenuItem("Reload Config", "")
@@ -237,6 +240,8 @@ func (a *App) handleClicks() {
 			a.setDisplay("white")
 		case <-clickCh(a.mDispText):
 			a.setDisplay("text")
+		case <-a.mTriggers.ClickedCh:
+			a.toggleTriggers()
 		case <-a.mAutostart.ClickedCh:
 			a.toggleAutostart()
 		case <-a.mConfigDir.ClickedCh:
@@ -697,11 +702,36 @@ func (a *App) restart() {
 	systray.Quit()
 }
 
+func (a *App) updateTriggersCheck() {
+	a.mu.Lock()
+	on := a.cfg.Settings.TriggersEnabled
+	a.mu.Unlock()
+	if on {
+		a.mTriggers.Check()
+	} else {
+		a.mTriggers.Uncheck()
+	}
+}
+
+func (a *App) toggleTriggers() {
+	a.mu.Lock()
+	on := !a.cfg.Settings.TriggersEnabled
+	a.cfg.Settings.TriggersEnabled = on
+	a.mu.Unlock()
+
+	if err := config.SetRawValue("triggers_enabled", fmt.Sprintf("%t", on)); err != nil {
+		log.Printf("[tray] failed to save triggers setting: %v", err)
+		return
+	}
+	a.updateTriggersCheck()
+	log.Printf("[tray] triggers %v", on)
+}
+
 func (a *App) updateAutostartCheck() {
 	if autostart.Enabled() {
-		a.mAutostart.SetTitle("● Launch at Login")
+		a.mAutostart.Check()
 	} else {
-		a.mAutostart.SetTitle("  Launch at Login")
+		a.mAutostart.Uncheck()
 	}
 }
 

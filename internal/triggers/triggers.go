@@ -53,6 +53,11 @@ func (r *Runner) Run(events <-chan monitor.Event) {
 	}
 }
 
+// Enabled reports whether trigger script execution is enabled.
+func (r *Runner) Enabled() bool {
+	return r.cfg.Settings.TriggersEnabled
+}
+
 func (r *Runner) dispatch(evt monitor.Event) {
 	evtStr := evt.Type.String()
 
@@ -65,6 +70,10 @@ func (r *Runner) dispatch(evt monitor.Event) {
 		log.Printf("[event] %s: %s", evtStr, evt.Device)
 	} else {
 		log.Printf("[event] %s: %s", evtStr, evt.Device.ShortString())
+	}
+
+	if !r.cfg.Settings.TriggersEnabled {
+		return
 	}
 
 	for _, rule := range r.cfg.Triggers {
@@ -88,26 +97,18 @@ func (r *Runner) dispatch(evt monitor.Event) {
 
 		// Cooldown: skip if fired too recently
 		if rule.Cooldown > 0 {
-			key := rule.Label
-			if key == "" {
-				key = rule.Script
-			}
 			r.mu.Lock()
-			last, exists := r.lastFire[key]
+			last, exists := r.lastFire[rule.Script]
 			cooldownDur := time.Duration(rule.Cooldown) * time.Second
 			if exists && time.Since(last) < cooldownDur {
 				r.mu.Unlock()
 				continue
 			}
-			r.lastFire[key] = time.Now()
+			r.lastFire[rule.Script] = time.Now()
 			r.mu.Unlock()
 		}
 
-		label := rule.Label
-		if label == "" {
-			label = rule.Script
-		}
-		log.Printf("[triggers] firing '%s' for %s event", label, evtStr)
+		log.Printf("[triggers] firing '%s' for %s event", rule.Script, evtStr)
 
 		go r.exec(rule, evt)
 	}
@@ -151,7 +152,7 @@ func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {
 	if err != nil {
 		log.Printf("[triggers] script error '%s': %v\n  output: %s", rule.Script, err, string(output))
 	} else {
-		log.Printf("[triggers] script ok '%s'", rule.Label)
+		log.Printf("[triggers] script ok '%s'", rule.Script)
 		if len(output) > 0 {
 			log.Printf("[triggers]   output: %s", string(output))
 		}

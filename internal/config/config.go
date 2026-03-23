@@ -19,16 +19,16 @@ type Config struct {
 }
 
 type Settings struct {
-	PollIntervalMS int    `toml:"poll_interval_ms"`
-	TrayDisplay    string `toml:"tray_display"` // "icon", "white", or "text"
-	TrayText       string `toml:"tray_text"`    // custom text when tray_display is "text" (max 16 chars)
-	Verbose        bool   `toml:"verbose"`      // enable verbose logging
+	PollIntervalMS  int    `toml:"poll_interval_ms"`
+	TrayDisplay     string `toml:"tray_display"`     // "icon", "white", or "text"
+	TrayText        string `toml:"tray_text"`        // custom text when tray_display is "text" (max 16 chars)
+	TriggersEnabled bool   `toml:"triggers_enabled"` // enable trigger script execution
+	Verbose         bool   `toml:"verbose"`          // enable verbose logging
 }
 
 type TriggerRule struct {
 	Event    string `toml:"event"`    // Event name (see docs)
 	Script   string `toml:"script"`   // Shell command or script path
-	Label    string `toml:"label"`    // Human-readable name
 	Enabled  bool   `toml:"enabled"`
 	Cooldown int    `toml:"cooldown"` // Minimum seconds between firings (0 = no cooldown)
 	Battery  int    `toml:"battery"`  // For BatteryLevel event: fire when battery <= this % (default: 20)
@@ -127,6 +127,43 @@ func SetValue(key, value string) error {
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
+// SetRawValue is like SetValue but writes the value unquoted (for booleans/numbers).
+func SetRawValue(key, value string) error {
+	path := Path()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read config: %w", err)
+	}
+
+	raw := fmt.Sprintf("%s = %s", key, value)
+	lines := strings.Split(string(data), "\n")
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, key+" ") || strings.HasPrefix(trimmed, key+"=") {
+			lines[i] = raw
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "[settings]" {
+				lines = append(lines[:i+1], append([]string{raw}, lines[i+1:]...)...)
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		lines = append(lines, raw)
+	}
+
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+}
+
 // defaultConfigTOML is the commented default config written on first run.
 const defaultConfigTOML = `# scape-ctl configuration
 # Location: ` + "`" + `scape-ctl help` + "`" + ` shows the path for your OS.
@@ -147,6 +184,9 @@ tray_display = "icon"
 # Text shown in the menu bar when tray_display = "text".
 # Maximum 16 characters (longer strings are truncated).
 tray_text = "Scape"
+
+# Enable trigger scripts (see examples below). Off by default.
+triggers_enabled = false
 
 # Enable verbose logging (shows device open/close, status polls, etc.).
 verbose = false
@@ -172,7 +212,6 @@ verbose = false
 # Fields:
 #   event    = Event name (required)
 #   script   = Shell command to run (required)
-#   label    = Human-readable name (optional)
 #   enabled  = true/false (required)
 #   cooldown = Minimum seconds between firings (optional, default: 0)
 #   battery  = For BatteryLevel: fire when battery <= this % (optional, default: 20)
@@ -193,14 +232,12 @@ verbose = false
 # [[triggers]]
 # event    = "HeadsetPowerOn"
 # script   = "osascript -e 'display notification \"Headset connected\" with title \"Scape\"'"
-# label    = "Headset on notification"
 # enabled  = true
 # cooldown = 5
 #
 # [[triggers]]
 # event    = "BatteryLevel"
 # script   = "osascript -e 'display notification \"Battery at $SCAPE_BATTERY%\" with title \"Scape\"'"
-# label    = "Low battery warning"
 # enabled  = true
 # battery  = 20
 # cooldown = 300
