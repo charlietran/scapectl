@@ -1,7 +1,6 @@
 # scape-ctl
 
 Native desktop controller and CLI for the **Fractal Design Scape** wireless gaming headset.
-Reverse engineered from Fractal's [Adjust Pro](https://adjust.fractal-design.com) web app.
 
 Features:
 
@@ -10,29 +9,18 @@ Features:
 - Trigger scripts on headset power on/off and 2.4GHz receiver connect/disconnect (e.g. switch audio output)
 - Send commands: switch EQ preset, toggle RGB on/off, toggle mic noise cancellation
 
+Planned, not yet implemented:
+
+- Headset button triggers — Listen to Consumer Control (volume, media keys) and Telephony (call buttons) HID collections to trigger scripts on button presses. The device exposes these as separate collections (usagePage 0x000C and 0x000B) that can be read alongside the vendor protocol.
+- EQ code import/export — Encode and share EQ presets using the same base64 format as the Adjust Pro web app.
+- Full lighting theme control — Upload custom RGB themes via the a4 bulk transfer protocol.
+
 This is alpha software, use at your own risk! Built for macOS, Windows and Linux, but only tested
-on macOS and Windows so far.
+on macOS and Windows so far. I am not affiliated with Fractal Design or endorsed by them in any way, this is an unofficial app made for my own purposes, freely shared without any guarantees. The USB communication protocol was observed and documented from Fractal's [Adjust Pro](https://adjust.fractal-design.com) web app.
 
 ## Install
 
-### Download
-
-Grab the latest release for your platform from the [Releases page](https://github.com/charlietran/scape-ctl/releases).
-
-### Build from source
-
-```bash
-git clone https://github.com/charlietran/scape-ctl
-cd scape-ctl
-make build
-./scape-ctl
-```
-
-Requires **Go 1.22+**. No other system dependencies on any platform.
-
-#### Cross-compilation
-
-All builds are pure Go (no CGO) except macOS, which uses CGO for IOKit bindings. You can compile for all 3 platforms from macOS, or just for Linux & Windows on either of those platforms.
+Grab the latest release for your platform from the [Releases page](https://github.com/charlietran/scape-ctl/releases). If you wish to compile yourself, see [Building from source](#building-from-source)
 
 ## Usage
 
@@ -63,9 +51,11 @@ scape-ctl.exe status
 ./scape-ctl status
 ```
 
-## Security Warnings
+## Security and Privacy
 
-This app is **not macOS notarized** and **not Windows signed**. Your OS will flag it as untrusted on first run.
+This app is **not macOS notarized** and **not Windows signed**. Your OS will flag it as untrusted on first run. If this raises one or both of your eyebrows, it should! Stop running random programs from strangers on the internet! But this is a hobby project and I'm not going to bother paying for Apple and Microsoft developer accounts.
+
+This app does not contain any telemetry or otherwise make network calls in the background. It does make a network request to check for the latest version if you click on the "Check for update" menu item.
 
 ### macOS
 
@@ -77,76 +67,13 @@ xattr -cr ScapeCtl.app
 
 macOS also requires explicit permission for apps to access HID devices. On first run you may see a "not permitted" error. Go to **System Settings** → **Privacy & Security** → **Input Monitoring**, click **+**, add the `scape-ctl` binary, and toggle it **on**.
 
+If the above does not work, try going to the bottom of Security & Privacy settings after you try opening the app once and receive the warning. Then you may see a prompt to allow ScapeCtl, and after allowing it you can try opening the app again.
+
 ### Windows
 
 Windows will show a **"Windows protected your PC"** SmartScreen warning. Click **More info** → **Run anyway**.
 
-## macOS Setup
-
-### Run at login
-
-To start scape-ctl automatically when you log in, create a Launch Agent:
-
-```bash
-mkdir -p ~/Library/LaunchAgents
-
-cat > ~/Library/LaunchAgents/com.scape-ctl.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.scape-ctl</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/local/bin/scape-ctl</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <false/>
-    <key>StandardOutPath</key>
-    <string>/tmp/scape-ctl.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/scape-ctl.log</string>
-</dict>
-</plist>
-EOF
-```
-
-Update the path in `ProgramArguments` if you installed the binary elsewhere.
-
-Load it immediately (or it will start on next login):
-
-```bash
-launchctl load ~/Library/LaunchAgents/com.scape-ctl.plist
-```
-
-To stop and remove:
-
-```bash
-launchctl unload ~/Library/LaunchAgents/com.scape-ctl.plist
-rm ~/Library/LaunchAgents/com.scape-ctl.plist
-```
-
-## Windows Setup
-
-### Run at login
-
-**Option 1: Startup folder**
-
-1. Press `Win+R`, type `shell:startup`, press Enter
-2. Create a shortcut to `scape-ctl.exe` in the folder that opens
-
-**Option 2: Task Scheduler (runs hidden)**
-
-1. Open **Task Scheduler** (`taskschd.msc`)
-2. Click **Create Basic Task**
-3. Name: `scape-ctl`, Trigger: **When I log on**
-4. Action: **Start a program**, browse to `scape-ctl.exe`
-5. Check **Open the Properties dialog** → on the General tab, select **Run whether user is logged on or not** if you want it fully hidden
-
-## Linux Setup
+## Linux
 
 ### udev rule
 
@@ -158,34 +85,6 @@ make udev
 sudo cp 50-fractal.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
-
-### Run at login
-
-**Using systemd user service:**
-
-```bash
-mkdir -p ~/.config/systemd/user
-
-cat > ~/.config/systemd/user/scape-ctl.service << 'EOF'
-[Unit]
-Description=Fractal Scape headset controller
-After=graphical-session.target
-
-[Service]
-ExecStart=/usr/local/bin/scape-ctl
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-EOF
-
-systemctl --user enable --now scape-ctl
-```
-
-To check status: `systemctl --user status scape-ctl`
-
-To stop: `systemctl --user disable --now scape-ctl`
 
 ## Configuration
 
@@ -289,13 +188,13 @@ cooldown = 5
 
 ### Trigger fields
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `event` | Yes | Event name (see table below) |
-| `script` | Yes | Shell command to run |
-| `enabled` | Yes | `true` or `false` |
-| `cooldown` | No | Minimum seconds between firings (default: 0). Prevents the same script from running repeatedly if the event fires in quick succession. |
-| `battery` | No | For `BatteryLevel` only: fire when battery <= this % (default: 20) |
+| Field      | Required | Description                                                                                                                            |
+| ---------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `event`    | Yes      | Event name (see table below)                                                                                                           |
+| `script`   | Yes      | Shell command to run                                                                                                                   |
+| `enabled`  | Yes      | `true` or `false`                                                                                                                      |
+| `cooldown` | No       | Minimum seconds between firings (default: 0). Prevents the same script from running repeatedly if the event fires in quick succession. |
+| `battery`  | No       | For `BatteryLevel` only: fire when battery <= this % (default: 20)                                                                     |
 
 ### Available events
 
@@ -329,9 +228,27 @@ Scripts receive these environment variables:
 | `SCAPE_JSON`      | Full event as JSON                   |
 | `SCAPE_BATTERY`   | Battery % (BatteryLevel events only) |
 
-## USB HID Protocol Reference
+## Building from source
+
+```bash
+git clone https://github.com/charlietran/scape-ctl
+cd scape-ctl
+make build
+./scape-ctl
+```
+
+Requires **Go 1.22+**. No other system dependencies on any platform.
+
+### Cross-compilation
+
+All builds are pure Go (no CGO) except macOS, which uses CGO for IOKit bindings. You can compile for all 3 platforms from macOS, or just for Linux & Windows on either of those platforms. ## USB HID Protocol Reference
 
 Reverse-engineered from WebHID sniffer captures and the Fractal Adjust Pro Electron app source. This section documents the protocol for anyone building their own tools.
+
+### Reverse Engineering Tools
+
+- `tools/webhid_sniffer.js` — Paste into Chrome DevTools on adjust.fractal-design.com to capture all HID traffic with annotations
+- The offline Electron app can be unpacked with `npx asar extract resources/app.asar unpacked/` for browseable JS source
 
 ### Device Identifiers
 
@@ -483,17 +400,6 @@ The web app's dongle controller (`updateDeviceState`) sends `11 21` and reads by
 All 5 steps run sequentially under a `deviceMutex` via `runCancellableExclusiveGroup`. This multi-step handshake takes several seconds. If `headsetConnected` goes false during the handshake, the `CancellableExclusiveGroup` cancels the in-progress factory creation, so no false "connected" event is emitted.
 
 **Practical recommendation:** For simpler implementations, skip `11 21` for presence detection entirely and use only `f1 21` byte 18 (`btConnState`). The tradeoff is slower disconnect detection (~5s for the dongle's internal relay timeout) but zero false positives. This is the approach scape-ctl uses.
-
-### Reverse Engineering Tools
-
-- `tools/webhid_sniffer.js` — Paste into Chrome DevTools on adjust.fractal-design.com to capture all HID traffic with annotations
-- The offline Electron app can be unpacked with `npx asar extract resources/app.asar unpacked/` for browseable JS source
-
-## Planned Features
-
-- **Headset button triggers** — Listen to Consumer Control (volume, media keys) and Telephony (call buttons) HID collections to trigger scripts on button presses. The device exposes these as separate collections (usagePage 0x000C and 0x000B) that can be read alongside the vendor protocol.
-- **EQ code import/export** — Encode and share EQ presets using the same base64 format as the Adjust Pro web app.
-- **Full lighting theme control** — Upload custom RGB themes via the a4 bulk transfer protocol.
 
 ## Credits
 
