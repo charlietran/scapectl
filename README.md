@@ -6,8 +6,8 @@ Reverse engineered from Fractal's [Adjust Pro](https://adjust.fractal-design.com
 Features:
 
 - Real-time headset connection/disconnection detection
+- Realtime status of headset features (battery level, status of mic, mute, RGB, noise cancellation, sidetone)
 - Trigger scripts on headset power on/off and 2.4GHz receiver connect/disconnect (e.g. switch audio output)
-- Realtime status of battery level and headset mic
 - Send commands: switch EQ preset, toggle RGB on/off, toggle mic noise cancellation
 
 This is alpha software, use at your own risk! Built for macOS, Windows and Linux, but only tested
@@ -15,61 +15,73 @@ on macOS and Windows so far.
 
 ## Install
 
-### From source
+### Download
+
+Grab the latest release for your platform from the [Releases page](https://github.com/charlietran/scape-ctl/releases).
+
+### Build from source
 
 ```bash
 git clone https://github.com/charlietran/scape-ctl
 cd scape-ctl
 make build
-```
-
-#### System dependencies
-
-- **Go 1.22+**
-- No system dependencies on any platform
-
-## Usage
-
-### Run in System Tray / Menu Bar
-
-```bash
 ./scape-ctl
 ```
 
-### CLI commands
+Requires **Go 1.22+**. No other system dependencies on any platform.
+
+#### Cross-compilation
+
+All builds are pure Go (no CGO) except macOS, which uses CGO for IOKit bindings. You can compile for all 3 platforms from macOS, or just for Linux & Windows on either of those platforms.
+
+## Usage
+
+### CLI
+
+Running `scape-ctl` with no arguments launches the system tray app. Pass a subcommand for CLI mode:
 
 ```bash
-./scape-ctl status       # Print battery, firmware, EQ slot, mic, connection info
-./scape-ctl devices      # List connected Fractal HID devices
-./scape-ctl sniff        # Continuously print incoming HID data
-./scape-ctl raw 02 f1 21 # Send arbitrary HID bytes
+scape-ctl status       # Print battery, firmware, EQ slot, mic, connection info
+scape-ctl devices      # List connected Fractal HID devices
+scape-ctl sniff        # Continuously print incoming HID data
+scape-ctl raw 02 f1 21 # Send arbitrary HID bytes
 ```
+
+On **macOS**, the binary is inside the app bundle. You can run CLI commands from it directly:
+
+```bash
+ScapeCtl.app/Contents/MacOS/scape-ctl status
+```
+
+On **Windows** and **Linux**, run the binary directly:
+
+```bash
+# Windows
+scape-ctl.exe status
+
+# Linux
+./scape-ctl status
+```
+
+## Security Warnings
+
+This app is **not macOS notarized** and **not Windows signed**. Your OS will flag it as untrusted on first run.
+
+### macOS
+
+macOS will block the app with _"cannot be opened because the developer cannot be verified"_. Remove the quarantine attribute:
+
+```bash
+xattr -cr ScapeCtl.app
+```
+
+macOS also requires explicit permission for apps to access HID devices. On first run you may see a "not permitted" error. Go to **System Settings** → **Privacy & Security** → **Input Monitoring**, click **+**, add the `scape-ctl` binary, and toggle it **on**.
+
+### Windows
+
+Windows will show a **"Windows protected your PC"** SmartScreen warning. Click **More info** → **Run anyway**.
 
 ## macOS Setup
-
-### Security permissions
-
-macOS requires explicit permission for apps to access HID devices. On first run you may see a "not permitted" error.
-
-**Grant Input Monitoring access:**
-
-1. Open **System Settings** → **Privacy & Security** → **Input Monitoring**
-2. Click **+** and navigate to the `scape-ctl` binary
-3. Toggle it **on**
-
-> **Note:** If you rebuild the binary, macOS may revoke the permission. You'll need to remove and re-add it.
-
-**Bypass Gatekeeper (unsigned binary):**
-
-If macOS blocks the app with "cannot be opened because the developer cannot be verified":
-
-```bash
-# For the .app bundle:
-xattr -cr ScapeControl.app
-
-# For the standalone binary:
-xattr -d com.apple.quarantine ./scape-ctl
-```
 
 ### Run at login
 
@@ -118,12 +130,6 @@ rm ~/Library/LaunchAgents/com.scape-ctl.plist
 ```
 
 ## Windows Setup
-
-### Security permissions
-
-Windows may show a "Windows protected your PC" SmartScreen warning for unsigned binaries.
-
-Click **More info** → **Run anyway** to allow it.
 
 ### Run at login
 
@@ -390,7 +396,9 @@ All 5 steps run sequentially under a `deviceMutex` via `runCancellableExclusiveG
 
 ## Credits
 
-- USB HID implementation based on [rafaelmartins/usbhid](https://github.com/rafaelmartins/usbhid) — a pure Go library for USB HID device communication using native OS APIs (IOKit on macOS, hidraw on Linux, WinAPI on Windows). BSD-3-Clause license.
+- USB HID implementation based on [rafaelmartins/usbhid](https://github.com/rafaelmartins/usbhid) — pure Go USB HID via native OS APIs (IOKit, hidraw, WinAPI). BSD-3-Clause.
+- System tray via [fyne-io/systray](https://github.com/fyne-io/systray) — cross-platform system tray library. BSD-3-Clause.
+- [ebitengine/purego](https://github.com/ebitengine/purego) — pure Go syscall bridge for calling C libraries without CGO. Apache-2.0.
 
 ## License
 

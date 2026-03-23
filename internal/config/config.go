@@ -20,7 +20,7 @@ type Config struct {
 
 type Settings struct {
 	PollIntervalMS int    `toml:"poll_interval_ms"`
-	TrayDisplay    string `toml:"tray_display"` // "black", "white", or "text"
+	TrayDisplay    string `toml:"tray_display"` // "icon", "white", or "text"
 	TrayText       string `toml:"tray_text"`    // custom text when tray_display is "text" (max 16 chars)
 	Verbose        bool   `toml:"verbose"`      // enable verbose logging
 }
@@ -38,7 +38,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Settings: Settings{
 			PollIntervalMS: 1500,
-			TrayDisplay:    "text",
+			TrayDisplay:    "icon",
 			TrayText:       "Scape",
 		},
 		Triggers: nil,
@@ -137,11 +137,12 @@ const defaultConfigTOML = `# scape-ctl configuration
 # Minimum: 200. Default: 1000.
 poll_interval_ms = 1500
 
-# Tray icon display mode: "black", "white", or "text".
-# "black" and "white" show the Scape icon (pick whichever suits your
-# menu bar theme). "text" shows a text label instead — see tray_text.
-# Changing between icon and text modes restarts the tray app.
-tray_display = "text"
+# Tray icon display mode: "icon", "white", or "text".
+# "icon" shows a menu-bar-adaptive icon (recommended for macOS; on other
+# platforms it behaves like "white"). "white" shows a fixed white icon.
+# "text" shows a text label instead — see tray_text (not available on
+# Windows). Changing between icon and text modes restarts the tray app.
+tray_display = "icon"
 
 # Text shown in the menu bar when tray_display = "text".
 # Maximum 16 characters (longer strings are truncated).

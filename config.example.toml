@@ -7,11 +7,12 @@
 # Minimum: 200. Default: 1500.
 poll_interval_ms = 1500
 
-# Tray icon display mode: "black", "white", or "text".
-# "black" and "white" show the Scape icon (pick whichever suits your
-# menu bar theme). "text" shows a text label instead — see tray_text.
-# Changing between icon and text modes restarts the tray app.
-tray_display = "text"
+# Tray icon display mode: "icon", "white", or "text".
+# "icon" shows a menu-bar-adaptive icon (recommended for macOS; on other
+# platforms it behaves like "white"). "white" shows a fixed white icon.
+# "text" shows a text label instead — see tray_text (not available on
+# Windows). Changing between icon and text modes restarts the tray app.
+tray_display = "icon"
 
 # Text shown in the menu bar when tray_display = "text".
 # Maximum 16 characters (longer strings are truncated).
