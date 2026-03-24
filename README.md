@@ -2,7 +2,7 @@
 
 Native desktop controller and CLI for the **Fractal Design Scape** wireless gaming headset.
 
-<img width="280" height="511" alt="image" src="https://github.com/user-attachments/assets/8d15fa09-12bf-4f0c-b325-404e864a8f2c" />
+<img align="right"  height="300" alt="image" src="https://github.com/user-attachments/assets/7c6ec708-9fda-461a-a63e-31a04396f66d" />
 
 Features:
 
@@ -13,12 +13,13 @@ Features:
 
 Planned, not yet implemented:
 
-- Headset button triggers — Listen to Consumer Control (volume, media keys) and Telephony (call buttons) HID collections to trigger scripts on button presses. The device exposes these as separate collections (usagePage 0x000C and 0x000B) that can be read alongside the vendor protocol.
-- EQ code import/export — Encode and share EQ presets using the same base64 format as the Adjust Pro web app.
-- Full lighting theme control — Upload custom RGB themes via the a4 bulk transfer protocol.
+- Customize headset button controls
+- EQ code import/export
+- Full lighting theme control
 
-This is alpha software, use at your own risk! Built for macOS, Windows and Linux, but only tested
-on macOS and Windows so far. I am not affiliated with Fractal Design or endorsed by them in any way, this is an unofficial app made for my own purposes, freely shared without any guarantees. The USB communication protocol was observed and documented from Fractal's [Adjust Pro](https://adjust.fractal-design.com) web app.
+Built for macOS, Windows and Linux, but only tested on macOS and Windows so far. 
+
+This is an unofficial app made for my own purposes, freely shared without any guarantees. I am not affiliated with or endorsed by Fractal Design in any way. The USB communication protocol was observed and documented from Fractal's [Adjust Pro](https://adjust.fractal-design.com) web app.
 
 ## Install
 
@@ -67,9 +68,7 @@ macOS will block the app with _"ScapeCtl is damaged and can't be opened"_ or _"c
 xattr -cr ScapeCtl.app
 ```
 
-macOS also requires explicit permission for apps to access HID devices. On first run you may see a "not permitted" error. Go to **System Settings** → **Privacy & Security** → **Input Monitoring**, click **+**, add the `scape-ctl` binary, and toggle it **on**.
-
-If the above does not work, try going to the bottom of Security & Privacy settings after you try opening the app once and receive the warning. Then you may see a prompt to allow ScapeCtl, and after allowing it you can try opening the app again.
+macOS also requires explicit permission for the app to read USB data from the headphones. On first run you may see a "not permitted" error. Go to **System Settings** → **Privacy & Security** → **Input Monitoring**, click **+**, add the ScapeCtl app, and toggle it **on**.
 
 ### Windows
 
@@ -117,7 +116,7 @@ enabled = true
 
 ### Audio Switching
 
-Automatically switch your default audio output when the headset powers on/off. This requires a command-line audio switching tool.
+The app cannot switch audio devices for you, but the trigger functiona allows you to execute any script you like. Here are config examples for how to automatically switch your default audio output when the headset powers on/off, with separate command-line audio switching tools:
 
 > **Note:** Trigger scripts run without a login shell, so tools may not be on `PATH`. Use the full path to the executable in your trigger scripts. Run `which SwitchAudioSource` (macOS) or `where nircmd` (Windows) to find it.
 
