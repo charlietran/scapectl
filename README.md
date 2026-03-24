@@ -55,11 +55,9 @@ macOS also requires explicit permission for the app to read USB data from the he
 
 Windows will show a **"Windows protected your PC"** SmartScreen warning. Click **More info** → **Run anyway**.
 
-## Linux
+### Linux
 
-### udev rule
-
-Required for non-root HID access:
+A udev Required for non-root HID access:
 
 ```bash
 make udev
