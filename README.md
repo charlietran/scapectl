@@ -25,9 +25,9 @@ Built for macOS, Windows and Linux, but so far only tested on macOS and Windows.
 - [Configuration](#configuration)
 - [Triggers](#triggers)
 - [Building from source](#building-from-source)
-- [USB HID Protocol Reference](#usb-hid-protocol-reference)
 - [Credits](#credits)
 - [License](#license)
+- [USB HID Protocol Reference](#usb-hid-protocol-reference)
 
 This is an unofficial app made for my own purposes, freely shared without any guarantees. I am not affiliated with or endorsed by Fractal Design in any way. The USB communication protocol was observed and documented from Fractal's [Adjust Pro](https://adjust.fractal-design.com) web app.
 
@@ -256,11 +256,26 @@ All builds are pure Go (no CGO) except macOS, which uses CGO for IOKit bindings.
 
 Reverse-engineered from WebHID sniffer captures and the Fractal Adjust Pro Electron app source. This section documents the protocol for anyone building their own tools.
 
+## Credits
+
+- USB HID implementation based on [rafaelmartins/usbhid](https://github.com/rafaelmartins/usbhid) — pure Go USB HID via native OS APIs (IOKit, hidraw, WinAPI). BSD-3-Clause.
+- System tray via [fyne-io/systray](https://github.com/fyne-io/systray) — cross-platform system tray library. BSD-3-Clause.
+- [ebitengine/purego](https://github.com/ebitengine/purego) — pure Go syscall bridge for calling C libraries without CGO. Apache-2.0.
+- Claude Code - huge help with figuring out the USB protocol and implementing the cross-platform Golang app
+
+## License
+
+GNU General Public License v3.0
+
+---
+---
+
+## USB HID Protocol Reference
+This section is just a reference to help anyone else who might want to interact with the Fractal Scape via USB.
+
 ### Reverse Engineering Tools
 
 - `tools/webhid_sniffer.js` — Paste into Chrome DevTools on adjust.fractal-design.com to capture all HID traffic with annotations
-- The offline Electron app can be unpacked with `npx asar extract resources/app.asar unpacked/` for browseable JS source
-## USB HID Protocol Reference
 
 ### Device Identifiers
 
@@ -413,13 +428,3 @@ All 5 steps run sequentially under a `deviceMutex` via `runCancellableExclusiveG
 
 **Practical recommendation:** For simpler implementations, skip `11 21` for presence detection entirely and use only `f1 21` byte 18 (`btConnState`). The tradeoff is slower disconnect detection (~5s for the dongle's internal relay timeout) but zero false positives. This is the approach scapectl uses.
 
-## Credits
-
-- USB HID implementation based on [rafaelmartins/usbhid](https://github.com/rafaelmartins/usbhid) — pure Go USB HID via native OS APIs (IOKit, hidraw, WinAPI). BSD-3-Clause.
-- System tray via [fyne-io/systray](https://github.com/fyne-io/systray) — cross-platform system tray library. BSD-3-Clause.
-- [ebitengine/purego](https://github.com/ebitengine/purego) — pure Go syscall bridge for calling C libraries without CGO. Apache-2.0.
-- Claude Code - huge help with figuring out the USB protocol and implementing the cross-platform Golang app
-
-## License
-
-GNU General Public License v3.0
