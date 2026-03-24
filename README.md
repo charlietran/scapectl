@@ -252,9 +252,7 @@ Requires **Go 1.22+**. No other system dependencies on any platform.
 
 ### Cross-compilation
 
-All builds are pure Go (no CGO) except macOS, which uses CGO for IOKit bindings. You can compile for all 3 platforms from macOS, or just for Linux & Windows on either of those platforms. ## USB HID Protocol Reference
-
-Reverse-engineered from WebHID sniffer captures and the Fractal Adjust Pro Electron app source. This section documents the protocol for anyone building their own tools.
+All builds are pure Go (no CGO). You can cross-compile for all 3 platforms from any of them.
 
 ## Credits
 
@@ -268,10 +266,10 @@ Reverse-engineered from WebHID sniffer captures and the Fractal Adjust Pro Elect
 GNU General Public License v3.0
 
 ---
----
 
 ## USB HID Protocol Reference
-This section is just a reference to help anyone else who might want to interact with the Fractal Scape via USB.
+
+This section is a reference for anyone who wants to interact with the Fractal Scape headset via USB. Reverse-engineered from WebHID sniffer captures and the Fractal Adjust Pro Electron app source.
 
 ### Reverse Engineering Tools
 
@@ -293,28 +291,28 @@ This section is just a reference to help anyone else who might want to interact 
 - **Collection**: usagePage `0xFF00`, usage 1 (vendor-specific, collection index 3)
 - **Response pattern**: all responses echo the first 2 command bytes
 
-The dongle exposes 4 HID collections. Only collection 3 (usagePage `0xFF00`) is used for the control protocol. The others are Consumer Control (media keys), vendor `0xFF13` (unknown), and Telephony (call buttons).
+The dongle exposes 4 HID collections. Only collection 3 (usagePage `0xFF00`) is used for the control protocol. The others are Consumer Control (media keys), vendor `0xFF13` (unknown), and Telephony (call buttons). On macOS, the IOHIDManager must be opened with a matching dictionary restricted to the Fractal vendor ID to avoid triggering the Input Monitoring permission prompt (the Consumer Control collection looks like a keyboard to macOS).
 
 ### Architecture: Dongle vs Headset
 
-The dongle acts as a wireless relay. Commands prefixed `0x11` are handled by the dongle directly (instant response). Commands prefixed `0xF1` are relayed to the headset (slower, may timeout if headset is off).
+The dongle acts as a wireless relay. Commands prefixed `0x11` are handled by the dongle directly (instant response). Commands prefixed `0xF1` are relayed to the headset (slower, ~60ms round-trip when online, times out when headset is off).
 
 The Adjust Pro web app treats these as two separate "devices" internally:
 
-- **Dongle controller** (`DEVICE_TYPE_FACTORY_DONGLE = 0x11`): queries dongle state, checks headset presence
+- **Dongle controller** (`DEVICE_TYPE_FACTORY_DONGLE = 0x11`): queries dongle state
 - **Headset delegate** (`DEVICE_TYPE_FACTORY_HEADSET = 0xF1`): queries headset status, controls EQ/mic/lighting
 
 ### Command Reference
 
 #### 0x11 — Dongle Commands
 
-| Command | Description             | Response                                       |
-| ------- | ----------------------- | ---------------------------------------------- |
-| `11 01` | Dongle firmware version | `11 01 00 <major> <minor>`                     |
-| `11 02` | Dongle serial number    | `11 02 00 <ASCII string, null-terminated>`     |
-| `11 21` | Dongle state poll       | `11 21 00 <headset_present> ...` (byte 3: 0/1) |
+| Command | Description             | Response                                   |
+| ------- | ----------------------- | ------------------------------------------ |
+| `11 01` | Dongle firmware version | `11 01 00 <major> <minor>`                 |
+| `11 02` | Dongle serial number    | `11 02 00 <ASCII string, null-terminated>` |
+| `11 21` | Dongle state poll       | `11 21 00 <headset_present> ...`           |
 
-`11 21` byte 3 is not reliable for headset presence detection — it can report false values tied to the dongle's 2.4 GHz radio polling cycle. Use `f1 21` byte 18 (`btConnState`) instead for accurate connection state.
+> **Note:** `11 21` byte 3 (`headset_present`) is unreliable — it flaps in a cycle tied to the dongle's 2.4 GHz radio polling. Do not use it for presence detection. Use `f1 21` byte 18 instead.
 
 #### 0xF1 — Headset Commands
 
@@ -324,36 +322,46 @@ The Adjust Pro web app treats these as two separate "devices" internally:
 | `f1 02`       | Headset serial number    | `f1 02 00 <ASCII string, null-terminated>` |
 | `f1 05`       | Headset info             | `f1 05 <data...>`                          |
 | `f1 21`       | Full status poll         | 63-byte status blob (see below)            |
-| `f1 34 XX YY` | Set mic parameter        | `XX`=parameter, `YY`=value                 |
+| `f1 34 XX YY` | Sidetone control         | `XX`=action, `YY`=steps (see below)        |
 | `f1 36 01`    | Enable MNC               | Mic Noise Cancellation on                  |
 | `f1 36 00`    | Disable MNC              | Mic Noise Cancellation off                 |
 
-**`f1 21` Status Blob** (from Electron app `getUpdatedDeviceState`):
+**Sidetone (`f1 34`):**
 
-| Byte  | Field            | Values                                                  |
-| ----- | ---------------- | ------------------------------------------------------- |
-| 0-1   | Echo             | `f1 21`                                                 |
-| 2     | Status           | 0 = OK                                                  |
-| 3     | Boom mic         | 0 = boom attached, 1 = detached (using built-in mic) \* |
-| 4     | Muted            | 0 = unmuted, 1 = muted (boom flipped up) \*\*           |
-| 5     | EQ slot          | 1-3                                                     |
-| 6     | Lighting slot    | 0 = off, 1+ = active                                    |
-| 7-8   | Chat volume      |                                                         |
-| 9-10  | Game volume      |                                                         |
-| 11    | Volume state     |                                                         |
-| 12    | BT mode          |                                                         |
-| 13    | Hall sensor      | Boom mic position sensor                                |
-| 14    | Battery          | 0-100 (%)                                               |
-| 15    | Sidetone state   | 1 = on                                                  |
-| 16-17 | Sidetone volume  |                                                         |
-| 18    | BT connection    | 1 = connected                                           |
-| 19    | MNC (ENC)        | 1 = on                                                  |
-| 20    | Power state      | 1 = on                                                  |
-| 33    | Dynamic lighting |                                                         |
-| 40    | WDL opt-in       | Windows Dynamic Lighting                                |
+| Action byte | Meaning  |
+| ----------- | -------- |
+| `0x00`      | Disable  |
+| `0x01`      | Enable   |
+| `0x02`      | Vol up   |
+| `0x03`      | Vol down |
 
-_\* Electron source says `0 = byte3` means attached, but actual device behavior is inverted_
-_\*\* Electron source says `0 = byte4` means muted, but actual device sends 1 = muted_
+Volume is relative (step-based), max 75 steps. Values >50 must be split across multiple commands. A status poll (`f1 21`) must be sent between each `f1 34` command — without it, the dongle acknowledges locally but does not relay to the headset.
+
+**`f1 21` Status Blob:**
+
+| Byte  | Field            | Values                                |
+| ----- | ---------------- | ------------------------------------- |
+| 0-1   | Echo             | `f1 21`                               |
+| 2     | Status           | 0 = OK                                |
+| 3     | Boom mic         | 0 = detached, nonzero = attached      |
+| 4     | Muted            | 0 = unmuted, nonzero = muted          |
+| 5     | EQ slot          | 1-3                                   |
+| 6     | Lighting slot    | 0 = off, 1+ = active                  |
+| 7-8   | Chat volume      |                                       |
+| 9-10  | Game volume      |                                       |
+| 11    | Volume state     |                                       |
+| 12    | BT mode          |                                       |
+| 13    | Hall sensor      | Boom mic position sensor              |
+| 14    | Battery          | 0-100 (%)                             |
+| 15    | Sidetone state   | 1 = on                                |
+| 16-17 | Sidetone vol     |                                       |
+| 18    | BT connection    | 1 = connected (reliable for presence) |
+| 19    | MNC (ENC)        | 1 = on                                |
+| 20    | Power state      | 1 = on                                |
+| 33    | Dynamic lighting |                                       |
+| 40    | WDL opt-in       | Windows Dynamic Lighting              |
+
+> **Note on byte 3/4:** The Electron app source labels these as `hasBoomMic` and `isMuted` with inverted semantics (0 = attached, 0 = muted). In practice the actual device behavior matches the table above. The code handles this correctly — test with your device if in doubt.
 
 #### 0xA4 — Config Transfer & Lighting
 
@@ -406,25 +414,14 @@ Lighting themes are uploaded as bulk data via `a4 01`/`a4 02`/`a4 03`. Simple on
 
 ### Polling & Connection Detection
 
-The Adjust Pro web app polls every **1500ms** with a **4200ms** response timeout:
+scapectl keeps a persistent HID connection to the dongle and polls `f1 21` every 1.5s with a 500ms timeout. It also sends `a4 0e 99` keepalive after each successful status poll.
 
-```
-11 21  →  dongle state (instant response)
-f1 21  →  headset status (relayed, ~60ms when online, times out when offline)
-a4 0e 99  →  keepalive
-```
+**Connection detection** uses `f1 21` byte 18 (`btConnState`) exclusively:
 
-**Connection detection architecture** (from Electron app source):
+- **Headset online:** `f1 21` returns within ~60ms, byte 18 = 1
+- **Headset offline:** `f1 21` times out (500ms) — returned as disconnected status, not an error
+- **Dongle unplugged:** HID I/O error closes the connection; next tick re-enumerates the USB bus
 
-The web app's dongle controller (`updateDeviceState`) sends `11 21` and reads byte 3. If `headsetConnected` transitions to true, it creates a "headset delegate" via `M.factory()`, which performs a multi-step handshake:
+The dongle also sends unsolicited `11 21` reports. The `SendAndReceive` function filters by echo bytes (first 2 bytes of the response) to match the correct reply, discarding any unsolicited reports.
 
-1. `readFWVersionFromDevice` (f1 01)
-2. `readSerialNumberFromDevice` (f1 02)
-3. `readEditionIdFromDevice`
-4. `readBTAddrFromDevice`
-5. `updateDeviceState` (f1 21 — full status)
-
-All 5 steps run sequentially under a `deviceMutex` via `runCancellableExclusiveGroup`. This multi-step handshake takes several seconds. If `headsetConnected` goes false during the handshake, the `CancellableExclusiveGroup` cancels the in-progress factory creation, so no false "connected" event is emitted.
-
-**Practical recommendation:** For simpler implementations, skip `11 21` for presence detection entirely and use only `f1 21` byte 18 (`btConnState`). The tradeoff is slower disconnect detection (~5s for the dongle's internal relay timeout) but zero false positives. This is the approach scapectl uses.
-
+> **Why not use `11 21` for presence?** The Adjust Pro web app uses `11 21` byte 3 as a fast presence check before creating a headset delegate. But byte 3 is unreliable — it flaps tied to the dongle's 2.4 GHz radio polling cycle. scapectl skips `11 21` entirely and relies on `f1 21` byte 18. The tradeoff is slightly slower disconnect detection (~5s for the dongle's internal relay timeout vs instant) but zero false positives.
