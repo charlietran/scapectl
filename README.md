@@ -20,9 +20,8 @@ Planned, not yet implemented:
 Built for macOS, Windows and Linux, but so far only tested on macOS and Windows.
 
 - [Install](#install)
-- [Usage](#usage)
 - [Security and Privacy](#security-and-privacy)
-- [Linux](#linux)
+- [Usage](#usage)
 - [Configuration](#configuration)
 - [Triggers](#triggers)
 - [Building from source](#building-from-source)
@@ -35,35 +34,6 @@ This is an unofficial app made for my own purposes, freely shared without any gu
 ## Install
 
 Grab the latest release for your platform from the [Releases page](https://github.com/charlietran/scape-ctl/releases). If you wish to compile yourself, see [Building from source](#building-from-source)
-
-## Usage
-
-### CLI
-
-Running `scape-ctl` with no arguments launches the system tray app. Pass a subcommand for CLI mode:
-
-```bash
-scape-ctl status       # Print battery, firmware, EQ slot, mic, connection info
-scape-ctl devices      # List connected Fractal HID devices
-scape-ctl sniff        # Continuously print incoming HID data
-scape-ctl raw 02 f1 21 # Send arbitrary HID bytes
-```
-
-On **macOS**, the binary is inside the app bundle. You can run CLI commands from it directly:
-
-```bash
-ScapeCtl.app/Contents/MacOS/scape-ctl status
-```
-
-On **Windows** and **Linux**, run the binary directly:
-
-```bash
-# Windows
-scape-ctl.exe status
-
-# Linux
-./scape-ctl status
-```
 
 ## Security and Privacy
 
@@ -97,6 +67,10 @@ make udev
 sudo cp 50-fractal.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
+
+## Usage
+
+The app is meant to be simple menu interface for seeing the status of the headphones and easily toggling some of its features. You may also configure it to run scripts upon certain events, to automate things like switching the audio device when the headphones are docked and undocked.
 
 ## Configuration
 
@@ -239,6 +213,33 @@ Scripts receive these environment variables:
 | `SCAPE_TIMESTAMP` | `2026-03-21T14:30:00-07:00`          |
 | `SCAPE_JSON`      | Full event as JSON                   |
 | `SCAPE_BATTERY`   | Battery % (BatteryLevel events only) |
+
+### CLI
+
+You may optionally use the CLI for your own scripting or tinkering. Running `scape-ctl` with no arguments launches the system tray app. Pass a subcommand for CLI mode:
+
+```bash
+scape-ctl status       # Print battery, firmware, EQ slot, mic, connection info
+scape-ctl devices      # List connected Fractal HID devices
+scape-ctl sniff        # Continuously print incoming HID data
+scape-ctl raw 02 f1 21 # Send arbitrary HID bytes
+```
+
+On **macOS**, the binary is inside the app bundle. You can run CLI commands from it directly:
+
+```bash
+ScapeCtl.app/Contents/MacOS/scape-ctl status
+```
+
+On **Windows** and **Linux**, run the binary directly:
+
+```bash
+# Windows
+scape-ctl.exe status
+
+# Linux
+./scape-ctl status
+```
 
 ## Building from source
 
