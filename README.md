@@ -17,7 +17,20 @@ Planned, not yet implemented:
 - EQ code import/export
 - Full lighting theme control
 
-Built for macOS, Windows and Linux, but only tested on macOS and Windows so far. 
+Built for macOS, Windows and Linux, but only tested on macOS and Windows so far.
+
+## Table of Contents
+
+- [Install](#install)
+- [Usage](#usage)
+- [Security and Privacy](#security-and-privacy)
+- [Linux](#linux)
+- [Configuration](#configuration)
+- [Triggers](#triggers)
+- [Building from source](#building-from-source)
+- [USB HID Protocol Reference](#usb-hid-protocol-reference)
+- [Credits](#credits)
+- [License](#license)
 
 This is an unofficial app made for my own purposes, freely shared without any guarantees. I am not affiliated with or endorsed by Fractal Design in any way. The USB communication protocol was observed and documented from Fractal's [Adjust Pro](https://adjust.fractal-design.com) web app.
 
