@@ -10,6 +10,13 @@ import (
 	"github.com/charlietran/scapectl/internal/usbhid"
 )
 
+func init() {
+	usbhid.ManagerMatch = &usbhid.ManagerMatchCriteria{
+		VendorID:  FractalVendorID,
+		UsagePage: UsagePageVendor,
+	}
+}
+
 // Verbose controls whether debug-level log messages are printed.
 var Verbose bool
 

@@ -13,6 +13,20 @@ import (
 	"fmt"
 )
 
+// ManagerMatch optionally restricts which devices the IOHIDManager enumerates
+// on macOS. Set before the first call to Enumerate. When set, only devices
+// matching the criteria are visible to the manager, which avoids triggering
+// the macOS "Input Monitoring" permission prompt for keyboard/consumer-control
+// collections. Has no effect on Linux or Windows.
+var ManagerMatch *ManagerMatchCriteria
+
+// ManagerMatchCriteria specifies IOHIDManager matching criteria.
+// Zero values mean "don't filter on this field".
+type ManagerMatchCriteria struct {
+	VendorID  uint16
+	UsagePage uint16
+}
+
 // Errors returned from usbhid package may be tested against these errors
 // with errors.Is.
 var (

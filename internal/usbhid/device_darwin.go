@@ -71,6 +71,7 @@ const (
 	kCFAllocatorDefault _CFAllocatorRef = 0
 
 	kCFNumberSInt16Type _CFIndex = 2
+	kCFNumberSInt32Type _CFIndex = 3
 
 	kCFStringEncodingUTF8 _CFStringEncoding = 0x08000100
 )
@@ -85,9 +86,17 @@ var (
 	_CFRunLoopStop           func(runLoop _CFRunLoopRef)
 	_CFSetGetCount           func(theSet _CFSetRef) _CFIndex
 	_CFSetGetValues          func(theSet _CFSetRef, value unsafe.Pointer)
-	_CFStringCreateWithBytes func(alloc _CFAllocatorRef, bytes []byte, numBytes _CFIndex, encoding _CFStringEncoding, isExternalRepresentation bool) _CFStringRef
-	_CFStringGetCString      func(theString _CFStringRef, buffer []byte, encoding _CFStringEncoding) bool
-	_CFStringGetLength       func(theString _CFStringRef) _CFIndex
+	_CFDictionaryCreateMutable func(allocator _CFAllocatorRef, capacity _CFIndex, keyCallBacks uintptr, valueCallBacks uintptr) _CFDictionaryRef
+	_CFDictionarySetValue      func(theDict _CFDictionaryRef, key _CFTypeRef, value _CFTypeRef)
+	_CFNumberCreate            func(allocator _CFAllocatorRef, theType _CFNumberType, valuePtr unsafe.Pointer) _CFNumberRef
+	_CFStringCreateWithBytes   func(alloc _CFAllocatorRef, bytes []byte, numBytes _CFIndex, encoding _CFStringEncoding, isExternalRepresentation bool) _CFStringRef
+	_CFStringGetCString        func(theString _CFStringRef, buffer []byte, encoding _CFStringEncoding) bool
+	_CFStringGetLength         func(theString _CFStringRef) _CFIndex
+)
+
+var (
+	_kCFTypeDictionaryKeyCallBacks   uintptr
+	_kCFTypeDictionaryValueCallBacks uintptr
 )
 
 var _kCFRunLoopDefaultMode uintptr
@@ -127,7 +136,8 @@ var (
 )
 
 var (
-	mgr _IOHIDManagerRef
+	mgr     _IOHIDManagerRef
+	mgrOpen bool
 
 	inputCallbackPtr   = purego.NewCallback(inputCallback)
 	removalCallbackPtr = purego.NewCallback(removalCallback)
@@ -142,6 +152,9 @@ func init() {
 
 	purego.RegisterLibFunc(&_CFDataGetBytes, cf, "CFDataGetBytes")
 	purego.RegisterLibFunc(&_CFDataGetLength, cf, "CFDataGetLength")
+	purego.RegisterLibFunc(&_CFDictionaryCreateMutable, cf, "CFDictionaryCreateMutable")
+	purego.RegisterLibFunc(&_CFDictionarySetValue, cf, "CFDictionarySetValue")
+	purego.RegisterLibFunc(&_CFNumberCreate, cf, "CFNumberCreate")
 	purego.RegisterLibFunc(&_CFNumberGetValue, cf, "CFNumberGetValue")
 	purego.RegisterLibFunc(&_CFRelease, cf, "CFRelease")
 	purego.RegisterLibFunc(&_CFRunLoopGetCurrent, cf, "CFRunLoopGetCurrent")
@@ -154,6 +167,14 @@ func init() {
 	purego.RegisterLibFunc(&_CFStringGetLength, cf, "CFStringGetLength")
 
 	_kCFRunLoopDefaultMode, err = purego.Dlsym(cf, "kCFRunLoopDefaultMode")
+	if err != nil {
+		panic(err)
+	}
+	_kCFTypeDictionaryKeyCallBacks, err = purego.Dlsym(cf, "kCFTypeDictionaryKeyCallBacks")
+	if err != nil {
+		panic(err)
+	}
+	_kCFTypeDictionaryValueCallBacks, err = purego.Dlsym(cf, "kCFTypeDictionaryValueCallBacks")
 	if err != nil {
 		panic(err)
 	}
@@ -185,9 +206,8 @@ func init() {
 	purego.RegisterLibFunc(&_IORegistryEntryFromPath, iokit, "IORegistryEntryFromPath")
 
 	mgr = _IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone)
-	if rv := _IOHIDManagerOpen(mgr, kIOHIDOptionsTypeNone); rv != kIOReturnSuccess {
-		panic("failed to create iohid manager")
-	}
+	// Manager is opened lazily in enumerate() so that ManagerMatch can be
+	// applied before the first open, avoiding the Input Monitoring prompt.
 }
 
 func byteSliceToString(b []byte) string {
@@ -241,8 +261,46 @@ func getPropertyString(device _IOHIDDeviceRef, key string) (string, error) {
 	return cfstringToString(_CFStringRef(prop))
 }
 
+func makeCFString(s string) _CFStringRef {
+	b := []byte(s)
+	return _CFStringCreateWithBytes(kCFAllocatorDefault, b, _CFIndex(len(b)), kCFStringEncodingUTF8, false)
+}
+
+func buildMatchingDict(m *ManagerMatchCriteria) _CFDictionaryRef {
+	dict := _CFDictionaryCreateMutable(kCFAllocatorDefault, 2, _kCFTypeDictionaryKeyCallBacks, _kCFTypeDictionaryValueCallBacks)
+	if m.VendorID != 0 {
+		v := int32(m.VendorID)
+		key := makeCFString("VendorID")
+		val := _CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, unsafe.Pointer(&v))
+		_CFDictionarySetValue(dict, _CFTypeRef(key), _CFTypeRef(val))
+		_CFRelease(_CFTypeRef(key))
+		_CFRelease(_CFTypeRef(val))
+	}
+	if m.UsagePage != 0 {
+		v := int32(m.UsagePage)
+		key := makeCFString("PrimaryUsagePage")
+		val := _CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, unsafe.Pointer(&v))
+		_CFDictionarySetValue(dict, _CFTypeRef(key), _CFTypeRef(val))
+		_CFRelease(_CFTypeRef(key))
+		_CFRelease(_CFTypeRef(val))
+	}
+	return dict
+}
+
 func enumerate() ([]*Device, error) {
-	_IOHIDManagerSetDeviceMatching(mgr, 0)
+	if !mgrOpen {
+		if ManagerMatch != nil {
+			dict := buildMatchingDict(ManagerMatch)
+			_IOHIDManagerSetDeviceMatching(mgr, dict)
+			_CFRelease(_CFTypeRef(dict))
+		} else {
+			_IOHIDManagerSetDeviceMatching(mgr, 0)
+		}
+		if rv := _IOHIDManagerOpen(mgr, kIOHIDOptionsTypeNone); rv != kIOReturnSuccess {
+			return nil, fmt.Errorf("failed to open iohid manager: 0x%08x", uint32(rv))
+		}
+		mgrOpen = true
+	}
 
 	rv := []*Device{}
 
