@@ -59,7 +59,7 @@ This app does not contain any telemetry or otherwise make network calls in the b
 
 ### macOS
 
-macOS will block the app with _"cannot be opened because the developer cannot be verified"_. Remove the quarantine attribute:
+macOS will block the app with _"ScapeCtl is damaged and can't be opened"_ or _"cannot be opened because the developer cannot be verified"_. Remove the quarantine attribute:
 
 ```bash
 xattr -cr ScapeCtl.app
