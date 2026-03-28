@@ -10,10 +10,16 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
 )
+
+// hidReportTimeout is the maximum time to wait for an IOKit report callback.
+// This prevents goroutines from blocking forever if the device disconnects
+// after a report is submitted but before the callback fires.
+const hidReportTimeout = 5 * time.Second
 
 type (
 	_io_name_t           []byte
@@ -61,6 +67,8 @@ type deviceExtra struct {
 	disconnect     bool
 	disconnectCh   chan bool
 	disconnectOnce sync.Once
+	closeOnce      sync.Once
+	closeErr       error
 	inputBuffer    []byte
 	inputCh        chan inputCtx
 	inputClosed    bool
@@ -136,9 +144,6 @@ var (
 )
 
 var (
-	mgr     _IOHIDManagerRef
-	mgrOpen bool
-
 	inputCallbackPtr   = purego.NewCallback(inputCallback)
 	removalCallbackPtr = purego.NewCallback(removalCallback)
 	resultCallbackPtr  = purego.NewCallback(resultCallback)
@@ -205,9 +210,6 @@ func init() {
 	purego.RegisterLibFunc(&_IORegistryEntryGetRegistryEntryID, iokit, "IORegistryEntryGetRegistryEntryID")
 	purego.RegisterLibFunc(&_IORegistryEntryFromPath, iokit, "IORegistryEntryFromPath")
 
-	mgr = _IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone)
-	// Manager is opened lazily in enumerate() so that ManagerMatch can be
-	// applied before the first open, avoiding the Input Monitoring prompt.
 }
 
 func byteSliceToString(b []byte) string {
@@ -284,18 +286,28 @@ func buildMatchingDict(m *ManagerMatchCriteria) _CFDictionaryRef {
 }
 
 func enumerate() ([]*Device, error) {
-	if !mgrOpen {
-		if ManagerMatch != nil {
-			dict := buildMatchingDict(ManagerMatch)
-			_IOHIDManagerSetDeviceMatching(mgr, dict)
-			_CFRelease(_CFTypeRef(dict))
-		} else {
-			_IOHIDManagerSetDeviceMatching(mgr, 0)
-		}
-		if rv := _IOHIDManagerOpen(mgr, kIOHIDOptionsTypeNone); rv != kIOReturnSuccess {
-			return nil, fmt.Errorf("failed to open iohid manager: 0x%08x", uint32(rv))
-		}
-		mgrOpen = true
+	// Create a fresh manager each call so that IOHIDManagerCopyDevices
+	// always reflects the current USB bus state. A long-lived manager
+	// without a CFRunLoop never receives matching notifications, so its
+	// device set goes stale after sleep/wake.
+	mgr := _IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone)
+	if mgr == 0 {
+		return nil, fmt.Errorf("failed to create iohid manager")
+	}
+	defer func() {
+		_IOHIDManagerClose(mgr, kIOHIDOptionsTypeNone)
+		_CFRelease(_CFTypeRef(mgr))
+	}()
+
+	if ManagerMatch != nil {
+		dict := buildMatchingDict(ManagerMatch)
+		_IOHIDManagerSetDeviceMatching(mgr, dict)
+		_CFRelease(_CFTypeRef(dict))
+	} else {
+		_IOHIDManagerSetDeviceMatching(mgr, 0)
+	}
+	if rv := _IOHIDManagerOpen(mgr, kIOHIDOptionsTypeNone); rv != kIOReturnSuccess {
+		return nil, fmt.Errorf("failed to open iohid manager: 0x%08x", uint32(rv))
 	}
 
 	rv := []*Device{}
@@ -494,6 +506,13 @@ func (d *Device) isOpen() bool {
 }
 
 func (d *Device) close() error {
+	d.extra.closeOnce.Do(func() {
+		d.extra.closeErr = d.doClose()
+	})
+	return d.extra.closeErr
+}
+
+func (d *Device) doClose() error {
 	d.extra.mtx.Lock()
 	disconnected := d.extra.disconnect
 	d.extra.mtx.Unlock()
@@ -575,9 +594,6 @@ func (d *Device) setReport(typ _IOHIDReportType, reportId byte, data []byte) err
 	d.extra.mtx.Unlock()
 
 	if disconnected {
-		if err := d.close(); err != nil {
-			return err
-		}
 		return ErrDeviceIsClosed
 	}
 
@@ -592,7 +608,14 @@ func (d *Device) setReport(typ _IOHIDReportType, reportId byte, data []byte) err
 		return fmt.Errorf("failed to submit request: 0x%08x", rv)
 	}
 
-	return <-ctx.err
+	select {
+	case err := <-ctx.err:
+		return err
+	case <-d.extra.disconnectCh:
+		return ErrDeviceIsClosed
+	case <-time.After(hidReportTimeout):
+		return fmt.Errorf("set report timed out after %v", hidReportTimeout)
+	}
 }
 
 func (d *Device) setOutputReport(reportId byte, data []byte) error {
@@ -609,9 +632,6 @@ func (d *Device) getFeatureReport(reportId byte) ([]byte, error) {
 	d.extra.mtx.Unlock()
 
 	if disconnected {
-		if err := d.close(); err != nil {
-			return nil, err
-		}
 		return nil, ErrDeviceIsClosed
 	}
 
@@ -624,8 +644,15 @@ func (d *Device) getFeatureReport(reportId byte) ([]byte, error) {
 		return nil, fmt.Errorf("failed to submit request: 0x%08x", rv)
 	}
 
-	if err := <-ctx.err; err != nil {
-		return nil, err
+	select {
+	case err := <-ctx.err:
+		if err != nil {
+			return nil, err
+		}
+	case <-d.extra.disconnectCh:
+		return nil, ErrDeviceIsClosed
+	case <-time.After(hidReportTimeout):
+		return nil, fmt.Errorf("get feature report timed out after %v", hidReportTimeout)
 	}
 
 	if d.reportWithId {
