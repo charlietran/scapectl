@@ -82,7 +82,7 @@ A default config with comments is created on first run. See `config.example.toml
 
 ## Triggers
 
-Run scripts automatically on device events. Add `[[triggers]]` entries to your config file (see `config.example.toml` for all options).
+Run scripts automatically on device events. Enable "Trigger Scripts" in the menu, and add `[[triggers]]` entries to your config file (see `config.example.toml` for all options).
 
 ### Notifications
 
