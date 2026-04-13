@@ -113,7 +113,7 @@ mkdir -p "${WIN_DIR}"
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
     go build -ldflags "${LDFLAGS_BASE} -H windowsgui -X main.version=${VERSION}" \
     -o "${WIN_DIR}/scapectl.exe" ${MODULE}
-cp config.example.toml "${WIN_DIR}/"
+cp config.example.toml scripts/notify.ps1 "${WIN_DIR}/"
 (cd "${WIN_DIR}" && zip -qr "${BUILD_DIR}/Win_ScapeCtl.zip" .)
 
 # ── Create GitHub Release ──

@@ -57,8 +57,11 @@ verbose = false
 #   SCAPE_TIMESTAMP ISO 8601 timestamp
 #   SCAPE_JSON      Full event as JSON
 #   SCAPE_BATTERY   Battery percentage (BatteryLevel events only)
+#   SCAPE_DIR       Directory containing the scapectl executable
 #
 # Examples (uncomment to enable):
+#
+# macOS:
 #
 # [[triggers]]
 # event    = "HeadsetPowerOn"
@@ -69,6 +72,21 @@ verbose = false
 # [[triggers]]
 # event    = "BatteryLevel"
 # script   = "osascript -e 'display notification \"Battery at $SCAPE_BATTERY%\" with title \"Scape\"'"
+# enabled  = true
+# battery  = 20
+# cooldown = 300
+#
+# Windows (uses notify.ps1 shipped alongside scapectl.exe):
+#
+# [[triggers]]
+# event    = "HeadsetPowerOn"
+# script   = 'powershell -ExecutionPolicy Bypass -File "%SCAPE_DIR%\notify.ps1" -Message "Headset connected"'
+# enabled  = true
+# cooldown = 5
+#
+# [[triggers]]
+# event    = "BatteryLevel"
+# script   = 'powershell -ExecutionPolicy Bypass -File "%SCAPE_DIR%\notify.ps1" -Message "Battery at %SCAPE_BATTERY%%%"'
 # enabled  = true
 # battery  = 20
 # cooldown = 300

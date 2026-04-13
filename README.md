@@ -86,6 +86,8 @@ Run scripts automatically on device events. Enable "Trigger Scripts" in the menu
 
 ### Notifications
 
+**macOS:**
+
 ```toml
 [[triggers]]
 event   = "HeadsetPowerOn"
@@ -95,6 +97,20 @@ enabled = true
 [[triggers]]
 event   = "HeadsetPowerOff"
 script  = "osascript -e 'display notification \"Headset disconnected\" with title \"Scape\"'"
+enabled = true
+```
+
+**Windows** — uses `notify.ps1`, a small PowerShell script shipped alongside `scapectl.exe`:
+
+```toml
+[[triggers]]
+event   = "HeadsetPowerOn"
+script  = 'powershell -ExecutionPolicy Bypass -File "%SCAPE_DIR%\notify.ps1" -Message "Headset connected"'
+enabled = true
+
+[[triggers]]
+event   = "HeadsetPowerOff"
+script  = 'powershell -ExecutionPolicy Bypass -File "%SCAPE_DIR%\notify.ps1" -Message "Headset disconnected"'
 enabled = true
 ```
 
@@ -212,6 +228,7 @@ Scripts receive these environment variables:
 | `SCAPE_TIMESTAMP` | `2026-03-21T14:30:00-07:00`          |
 | `SCAPE_JSON`      | Full event as JSON                   |
 | `SCAPE_BATTERY`   | Battery % (BatteryLevel events only) |
+| `SCAPE_DIR`       | Directory containing the scapectl executable |
 
 ### CLI
 

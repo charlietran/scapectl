@@ -9,6 +9,7 @@
 //	SCAPE_PATH       = device path
 //	SCAPE_TIMESTAMP  = ISO 8601 timestamp
 //	SCAPE_BATTERY    = battery percentage (BatteryLevel events only)
+//	SCAPE_DIR        = directory containing the scapectl executable
 package triggers
 
 import (
@@ -17,6 +18,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -130,6 +132,7 @@ func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {
 	} else {
 		cmd = exec.Command("sh", "-c", rule.Script)
 	}
+	hideConsole(cmd)
 
 	env := append(os.Environ(),
 		"SCAPE_EVENT="+evt.Type.String(),
@@ -144,6 +147,11 @@ func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {
 	// Add battery percentage for BatteryLevel events
 	if evt.Status != nil && evt.Status.BatteryPercent >= 0 {
 		env = append(env, fmt.Sprintf("SCAPE_BATTERY=%d", evt.Status.BatteryPercent))
+	}
+
+	// Add app directory so trigger scripts can reference bundled helpers (e.g. notify.ps1)
+	if execPath, err := os.Executable(); err == nil {
+		env = append(env, "SCAPE_DIR="+filepath.Dir(execPath))
 	}
 
 	cmd.Env = env

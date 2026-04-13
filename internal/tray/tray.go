@@ -786,6 +786,7 @@ func (a *App) openURL(url string) {
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}
+	hideConsole(cmd)
 	if err := cmd.Start(); err != nil {
 		log.Printf("[tray] failed to open %s: %v", url, err)
 	}
