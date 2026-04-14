@@ -4,4 +4,6 @@ package triggers
 
 import "os/exec"
 
-func hideConsole(_ *exec.Cmd) {}
+func shellCmd(script string) *exec.Cmd {
+	return exec.Command("sh", "-c", script)
+}

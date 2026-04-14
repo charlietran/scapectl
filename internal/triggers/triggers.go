@@ -17,9 +17,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"time"
 
@@ -126,13 +124,7 @@ func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {
 		"timestamp": evt.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
 	})
 
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd", "/C", rule.Script)
-	} else {
-		cmd = exec.Command("sh", "-c", rule.Script)
-	}
-	hideConsole(cmd)
+	cmd := shellCmd(rule.Script)
 
 	env := append(os.Environ(),
 		"SCAPE_EVENT="+evt.Type.String(),
