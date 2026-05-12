@@ -54,6 +54,8 @@ func main() {
 			cmdSniff()
 		case "eq-code":
 			cmdEqCode(os.Args[2:])
+		case "version", "-v", "--version":
+			fmt.Printf("scapectl %s\n", version)
 		case "help", "-h", "--help":
 			cmdHelp()
 		default:
@@ -298,6 +300,7 @@ Usage:
   scapectl raw <hex>    Send raw HID report (for reverse engineering)
   scapectl sniff        Print all incoming HID data continuously
   scapectl eq-code      Decode/encode EQ preset codes
+  scapectl version      Print version
   scapectl help         Show this help
 
 Config:  ` + config.Path() + `

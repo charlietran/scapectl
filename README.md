@@ -34,6 +34,23 @@ This is an unofficial app made for my own purposes, freely shared without any gu
 
 ## Install
 
+### Homebrew (macOS)
+
+```bash
+brew tap charlietran/scapectl https://github.com/charlietran/scapectl
+brew install --cask scapectl
+```
+
+Installs `ScapeCtl.app` into `/Applications` (launchable from Spotlight, addable to Login Items) and symlinks the `scapectl` CLI onto your `$PATH` for terminal/script use.
+
+To uninstall completely (removes the app and zaps the config directory):
+
+```bash
+brew uninstall --cask --zap scapectl
+```
+
+### Prebuilt downloads
+
 Grab the latest release for your platform from the [Releases page](https://github.com/charlietran/scapectl/releases). If you wish to compile yourself, see [Building from source](#building-from-source)
 
 ## Security and Privacy

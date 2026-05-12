@@ -127,3 +127,22 @@ gh release create "${TAG}" \
     "${BUILD_DIR}/Win_ScapeCtl.zip"
 
 echo "==> Done! Release ${TAG} created."
+
+# ── Bump Homebrew cask ──
+# Only runs locally (skipped in CI to avoid pushing to main without extra auth).
+
+if [[ -z "${GITHUB_ACTIONS:-}" && -f Casks/scapectl.rb ]]; then
+    echo "==> Bumping Homebrew cask to ${VERSION}..."
+    ZIP_SHA=$(shasum -a 256 "${BUILD_DIR}/Mac_ScapeCtl.zip" | awk '{print $1}')
+    sed -i.bak -E \
+        -e "s|version \"[0-9]+\.[0-9]+\.[0-9]+\"|version \"${VERSION}\"|" \
+        -e "s|sha256 \"[0-9a-f]{64}\"|sha256 \"${ZIP_SHA}\"|" \
+        Casks/scapectl.rb
+    rm -f Casks/scapectl.rb.bak
+    if ! git diff --quiet Casks/scapectl.rb; then
+        git add Casks/scapectl.rb
+        git commit -m "Bump cask to ${TAG}"
+        git push origin HEAD
+        echo "==> Cask bumped and pushed."
+    fi
+fi
