@@ -45,9 +45,9 @@ brew tap charlietran/scapectl https://github.com/charlietran/scapectl
 brew install --cask scapectl
 ```
 
-Installs /Applications/ScapeCtl.app and symlinks the `scapectl` CLI onto your homebrew path
+Installs `/Applications/ScapeCtl.app` and symlinks the `scapectl` CLI onto your Homebrew path. The cask's `postflight` strips quarantine attributes and re-signs the app locally, so you can skip the manual `xattr` step in [Security and Privacy](#macos).
 
-To uninstall:
+To uninstall (the `--zap` flag also removes config files in `~/Library/Application Support/scapectl`):
 
 ```sh
 brew uninstall --cask --zap scapectl
@@ -62,7 +62,7 @@ This app does not contain any telemetry or otherwise make network calls in the b
 
 ### macOS
 
-macOS will block the app with _"ScapeCtl is damaged and can't be opened"_ or _"cannot be opened because the developer cannot be verified"_. Remove the quarantine attribute:
+macOS will block the app with _"ScapeCtl is damaged and can't be opened"_ or _"cannot be opened because the developer cannot be verified"_. If you installed via [Homebrew](#homebrew-macos), the cask handles this automatically. Otherwise, remove the quarantine attribute manually:
 
 ```bash
 xattr -cr ScapeCtl.app
