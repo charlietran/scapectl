@@ -1,6 +1,6 @@
 cask "scapectl" do
-  version "0.0.12"
-  sha256 "1c9780c7453b3560ba02d3fef8fd45474368530d20b25f677558a192f74a7aa1"
+  version "0.0.13"
+  sha256 :no_check
 
   url "https://github.com/charlietran/scapectl/releases/download/v#{version}/Mac_ScapeCtl.zip",
       verified: "github.com/charlietran/scapectl/"
