@@ -5,8 +5,9 @@ set -euo pipefail
 # Usage: ./tools/release.sh [version]
 #
 # If version is omitted, auto-increments the patch number from the latest tag.
-# When run locally, creates and pushes a git tag, then builds and releases.
+# When run locally, builds first, then tags, pushes, and publishes the release.
 # When run in CI ($GITHUB_ACTIONS set), skips tag creation (already triggered by push).
+# Steps are idempotent: re-running after a partial failure skips work that's done.
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
@@ -41,16 +42,21 @@ fi
 TAG="v${VERSION}"
 echo "==> Version: ${VERSION} (tag: ${TAG})"
 
-# ── Tag (local only) ──
+# ── Preflight checks (local only) ──
+#
+# Do these before building so a failed build never leaves an orphan tag
+# or a half-published release behind. A re-run after partial failure is
+# allowed as long as no release was published for this version yet.
 
 if [[ -z "${GITHUB_ACTIONS:-}" ]]; then
     if [[ -n "$(git status --porcelain)" ]]; then
         echo "Error: working tree is not clean. Commit or stash changes first." >&2
         exit 1
     fi
-    echo "==> Creating tag ${TAG}..."
-    git tag "${TAG}"
-    git push origin "${TAG}"
+    if gh release view "${TAG}" >/dev/null 2>&1; then
+        echo "Error: release ${TAG} already exists. Pick a different version or delete the existing release." >&2
+        exit 1
+    fi
 fi
 
 # ── Build setup ──
@@ -135,17 +141,43 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
 cp config.example.toml scripts/notify.ps1 "${WIN_DIR}/"
 (cd "${WIN_DIR}" && zip -qr "${BUILD_DIR}/Win_ScapeCtl.zip" .)
 
+# ── Tag (local only) ──
+#
+# Push the tag only after a successful build. Each step is skipped if it
+# already happened, so the script can be re-run after a partial failure.
+
+if [[ -z "${GITHUB_ACTIONS:-}" ]]; then
+    if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+        echo "==> Tag ${TAG} already exists locally, skipping git tag."
+    else
+        echo "==> Creating tag ${TAG}..."
+        git tag "${TAG}"
+    fi
+    if git ls-remote --exit-code --tags origin "${TAG}" >/dev/null 2>&1; then
+        echo "==> Tag ${TAG} already on origin, skipping push."
+    else
+        git push origin "${TAG}"
+    fi
+fi
+
 # ── Create GitHub Release ──
+#
+# Skip if a release already exists. Covers the race where CI was triggered
+# by the tag this local run just pushed, and the partial-failure re-run case.
 
-echo "==> Creating GitHub release ${TAG}..."
-gh release create "${TAG}" \
-    --title "${TAG}" \
-    --generate-notes \
-    "${BUILD_DIR}/Mac_ScapeCtl.zip" \
-    "${BUILD_DIR}/Linux_ScapeCtl.tar.gz" \
-    "${BUILD_DIR}/Win_ScapeCtl.zip"
+if gh release view "${TAG}" >/dev/null 2>&1; then
+    echo "==> Release ${TAG} already exists, skipping creation."
+else
+    echo "==> Creating GitHub release ${TAG}..."
+    gh release create "${TAG}" \
+        --title "${TAG}" \
+        --generate-notes \
+        "${BUILD_DIR}/Mac_ScapeCtl.zip" \
+        "${BUILD_DIR}/Linux_ScapeCtl.tar.gz" \
+        "${BUILD_DIR}/Win_ScapeCtl.zip"
+fi
 
-echo "==> Done! Release ${TAG} created."
+echo "==> Done! Release ${TAG} ready."
 
 # ── Bump Homebrew cask ──
 # Only runs locally (skipped in CI to avoid pushing to main without extra auth).
