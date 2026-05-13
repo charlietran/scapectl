@@ -1,0 +1,39 @@
+{
+  "images" : [
+    { "filename" : "icon-light-16.png",   "idiom" : "mac", "scale" : "1x", "size" : "16x16" },
+    { "filename" : "icon-light-32.png",   "idiom" : "mac", "scale" : "2x", "size" : "16x16" },
+    { "filename" : "icon-light-32.png",   "idiom" : "mac", "scale" : "1x", "size" : "32x32" },
+    { "filename" : "icon-light-64.png",   "idiom" : "mac", "scale" : "2x", "size" : "32x32" },
+    { "filename" : "icon-light-128.png",  "idiom" : "mac", "scale" : "1x", "size" : "128x128" },
+    { "filename" : "icon-light-256.png",  "idiom" : "mac", "scale" : "2x", "size" : "128x128" },
+    { "filename" : "icon-light-256.png",  "idiom" : "mac", "scale" : "1x", "size" : "256x256" },
+    { "filename" : "icon-light-512.png",  "idiom" : "mac", "scale" : "2x", "size" : "256x256" },
+    { "filename" : "icon-light-512.png",  "idiom" : "mac", "scale" : "1x", "size" : "512x512" },
+    { "filename" : "icon-light-1024.png", "idiom" : "mac", "scale" : "2x", "size" : "512x512" },
+
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-16.png",   "idiom" : "mac", "scale" : "1x", "size" : "16x16" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-32.png",   "idiom" : "mac", "scale" : "2x", "size" : "16x16" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-32.png",   "idiom" : "mac", "scale" : "1x", "size" : "32x32" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-64.png",   "idiom" : "mac", "scale" : "2x", "size" : "32x32" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-128.png",  "idiom" : "mac", "scale" : "1x", "size" : "128x128" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-256.png",  "idiom" : "mac", "scale" : "2x", "size" : "128x128" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-256.png",  "idiom" : "mac", "scale" : "1x", "size" : "256x256" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-512.png",  "idiom" : "mac", "scale" : "2x", "size" : "256x256" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-512.png",  "idiom" : "mac", "scale" : "1x", "size" : "512x512" },
+    { "appearances" : [{ "appearance" : "luminosity", "value" : "dark" }],
+      "filename" : "icon-dark-1024.png", "idiom" : "mac", "scale" : "2x", "size" : "512x512" }
+  ],
+  "info" : {
+    "author" : "scapectl",
+    "version" : 1
+  }
+}
