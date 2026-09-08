@@ -180,7 +180,8 @@ fi
 echo "==> Done! Release ${TAG} ready."
 
 # ── Bump Homebrew cask ──
-# Only runs locally (skipped in CI to avoid pushing to main without extra auth).
+# Only runs locally. In CI the "Bump Homebrew cask" step in
+# .github/workflows/release.yml does this against main instead.
 
 if [[ -z "${GITHUB_ACTIONS:-}" && -f Casks/scapectl.rb ]]; then
     echo "==> Bumping Homebrew cask to ${VERSION}..."

@@ -24,3 +24,39 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash tools/release.sh "${GITHUB_REF#refs/tags/v}"
+
+      # Keep Casks/scapectl.rb on main in sync with the tag that was just
+      # released. The cask uses `sha256 :no_check`, so only the version line
+      # needs to change. Skipped when main is already at this version (e.g. a
+      # local tools/release.sh run bumped it first); retried a few times so a
+      # push that lands between our fetch and push doesn't fail the release.
+      - name: Bump Homebrew cask
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            git fetch --depth=1 origin main
+            git checkout -B main FETCH_HEAD
+
+            sed -i.bak -E "s|^(  version )\"[^\"]+\"|\1\"${VERSION}\"|" Casks/scapectl.rb
+            rm -f Casks/scapectl.rb.bak
+
+            if git diff --quiet Casks/scapectl.rb; then
+              echo "Cask already at ${VERSION}, nothing to do."
+              exit 0
+            fi
+
+            git add Casks/scapectl.rb
+            git commit -m "Bump cask to v${VERSION}"
+            if git push origin main; then
+              echo "Cask bumped to ${VERSION} and pushed to main."
+              exit 0
+            fi
+            echo "Push rejected (attempt ${attempt}), refetching main and retrying..."
+          done
+
+          echo "Failed to push cask bump after 3 attempts." >&2
+          exit 1
