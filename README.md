@@ -289,6 +289,18 @@ make build
 
 Requires **Go 1.22+**. No other system dependencies on any platform.
 
+### Running a local build on macOS
+
+`make dev` builds `build/ScapeCtl.app` and relaunches it. Requires Xcode for the app icon.
+
+To use it from `/Applications` too:
+
+```bash
+brew uninstall --cask scapectl # only if installed
+make app
+ln -s "$PWD/build/ScapeCtl.app" /Applications/ScapeCtl.app
+```
+
 ### Cross-compilation
 
 All builds are pure Go (no CGO). You can cross-compile for all 3 platforms from any of them.

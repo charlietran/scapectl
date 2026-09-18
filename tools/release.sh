@@ -69,57 +69,8 @@ CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
     go build -ldflags "${LDFLAGS_BASE} -X main.version=${VERSION}" \
     -o "${BUILD_DIR}/scapectl" ${MODULE}
 
-# Bundle as .app
-APP_DIR="${BUILD_DIR}/ScapeCtl.app/Contents"
-mkdir -p "${APP_DIR}/MacOS" "${APP_DIR}/Resources"
-mv "${BUILD_DIR}/scapectl" "${APP_DIR}/MacOS/scapectl"
-cp config.example.toml "${APP_DIR}/Resources/"
-
-# Compile the asset catalog into AppIcon.icns + Assets.car.
-# This gives the .app an icon in Finder/Dock/Spotlight, with separate
-# light- and dark-appearance variants on macOS 14+.
-echo "==> Compiling app icon..."
-xcrun actool \
-    --compile "${APP_DIR}/Resources" \
-    --platform macosx \
-    --minimum-deployment-target 14.0 \
-    --app-icon AppIcon \
-    --include-all-app-icons \
-    --output-partial-info-plist "${BUILD_DIR}/icon-info.plist" \
-    assets/Assets.xcassets >/dev/null
-
-cat > "${APP_DIR}/Info.plist" << PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>Scape Control</string>
-    <key>CFBundleDisplayName</key>
-    <string>Scape Control</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.charlietran.scapectl</string>
-    <key>CFBundleVersion</key>
-    <string>${VERSION}</string>
-    <key>CFBundleShortVersionString</key>
-    <string>${VERSION}</string>
-    <key>CFBundleExecutable</key>
-    <string>scapectl</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundleIconName</key>
-    <string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>NSHighResolutionCapable</key>
-    <string>True</string>
-    <key>LSUIElement</key>
-    <string>1</string>
-</dict>
-</plist>
-PLIST
+echo "==> Bundling ScapeCtl.app..."
+./tools/bundle-mac.sh "${BUILD_DIR}/scapectl" "${VERSION}" "${BUILD_DIR}"
 
 (cd "${BUILD_DIR}" && zip -qr Mac_ScapeCtl.zip ScapeCtl.app)
 
