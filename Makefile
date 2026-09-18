@@ -1,4 +1,4 @@
-.PHONY: build install clean run devices status sniff udev
+.PHONY: build install clean run devices status sniff udev app dev
 
 BINARY  := scapectl
 PKG     := ./cmd/scapectl
@@ -15,6 +15,15 @@ run: build
 
 install: build
 	install -Dm755 $(BINARY) $(DESTDIR)/usr/local/bin/$(BINARY)
+
+# macOS app bundle, shared with the release build.
+app: build
+	./tools/bundle-mac.sh $(BINARY) $(VERSION) build
+
+# macOS: rebuild the bundle and relaunch the tray app.
+dev: app
+	pkill -x $(BINARY) || true
+	open -n build/ScapeCtl.app
 
 # CLI shortcuts
 devices: build
@@ -35,7 +44,7 @@ udev:
 	@echo "Done. Replug your device."
 
 clean:
-	rm -f $(BINARY)
+	rm -rf $(BINARY) build
 	go clean
 
 # Build for all platforms (requires CGO cross-compilation toolchains for hidapi)

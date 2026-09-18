@@ -1,5 +1,6 @@
 /scapectl
 /scapectl-*
+build/
 *.exe
 tmp/
 .DS_Store
