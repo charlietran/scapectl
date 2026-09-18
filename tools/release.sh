@@ -69,10 +69,10 @@ trap 'rm -rf "$BUILD_DIR"' EXIT
 echo "==> Building macOS (arm64)..."
 CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
     go build -ldflags "${LDFLAGS_BASE} -X main.version=${VERSION}" \
-    -o "${BUILD_DIR}/scapectl" ${MODULE}
+    -o "${BUILD_DIR}/scapectl-macos-binary" ${MODULE}
 
 echo "==> Bundling ScapeCtl.app..."
-./tools/bundle-mac.sh "${BUILD_DIR}/scapectl" "${VERSION}" "${BUILD_DIR}"
+./tools/bundle-mac.sh "${BUILD_DIR}/scapectl-macos-binary" "${VERSION}" "${BUILD_DIR}"
 
 (cd "${BUILD_DIR}" && zip -qr Mac_ScapeCtl.zip ScapeCtl.app)
 
