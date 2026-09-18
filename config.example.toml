@@ -57,6 +57,8 @@ verbose = false
 #   SCAPE_TIMESTAMP ISO 8601 timestamp
 #   SCAPE_JSON      Full event as JSON
 #   SCAPE_BATTERY   Battery percentage (BatteryLevel events only)
+#   SCAPE_EQ_SLOT   Active EQ slot, 1-3
+#   SCAPE_EQ_DATA   JSON bands of the new slot (EqChanged only)
 #   SCAPE_DIR       Directory containing the scapectl executable
 #
 # Examples (uncomment to enable):
@@ -149,3 +151,12 @@ verbose = false
 # script   = "pactl set-default-sink alsa_output.pci-0000_00_1f.3.analog-stereo"
 # enabled  = true
 # cooldown = 5
+
+# Pass EQ data to your own renderer/notification helper (not bundled).
+# Example macOS helper location:
+#
+# [[triggers]]
+# event    = "EqChanged"
+# script   = '/bin/bash "$HOME/Library/Application Support/scapectl/notify-eq.sh"'
+# enabled  = true
+# cooldown = 1

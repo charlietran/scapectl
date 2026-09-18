@@ -27,8 +27,8 @@ type Settings struct {
 }
 
 type TriggerRule struct {
-	Event    string `toml:"event"`    // Event name (see docs)
-	Script   string `toml:"script"`   // Shell command or script path
+	Event    string `toml:"event"`  // Event name (see docs)
+	Script   string `toml:"script"` // Shell command or script path
 	Enabled  bool   `toml:"enabled"`
 	Cooldown int    `toml:"cooldown"` // Minimum seconds between firings (0 = no cooldown)
 	Battery  int    `toml:"battery"`  // For BatteryLevel event: fire when battery <= this % (default: 20)
@@ -226,6 +226,9 @@ verbose = false
 #   SCAPE_TIMESTAMP ISO 8601 timestamp
 #   SCAPE_JSON      Full event as JSON
 #   SCAPE_BATTERY   Battery percentage (BatteryLevel events only)
+#   SCAPE_EQ_SLOT   Active EQ slot, 1-3
+#   SCAPE_EQ_DATA   JSON bands of the new slot (EqChanged only)
+#   SCAPE_DIR       Directory containing the scapectl executable
 #
 # Examples (uncomment to enable):
 #
@@ -241,6 +244,14 @@ verbose = false
 # enabled  = true
 # battery  = 20
 # cooldown = 300
+#
+# Pass EQ data to your own helper (not bundled). See config.example.toml.
+#
+# [[triggers]]
+# event    = "EqChanged"
+# script   = '/bin/bash "$HOME/Library/Application Support/scapectl/notify-eq.sh"'
+# enabled  = true
+# cooldown = 1
 `
 
 // EnsureExists creates a default config file if none exists.

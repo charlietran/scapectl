@@ -281,6 +281,31 @@ func (d *Device) IsHeadsetPresent() (bool, error) {
 	return ParsePresence(resp), nil
 }
 
+// GetEqSettings reads a slot (1-3), falling back to factory slots 4/5
+// when user slots 2/3 have no enabled bands.
+func (d *Device) GetEqSettings(slot int) (*EqSettings, error) {
+	if slot < 1 || slot > 3 {
+		return nil, fmt.Errorf("EQ slot must be between 1 and 3: %d", slot)
+	}
+	rid, payload := BuildGetEqSettings(slot)
+	resp, err := d.SendAndReceive(rid, payload, defaultTimeout)
+	if err != nil {
+		return nil, err
+	}
+	settings, err := ParseEqSettings(resp)
+	if err != nil {
+		return nil, err
+	}
+	if slot != 1 && len(settings.Points) == 0 {
+		rid, payload = BuildGetEqSettings(slot + 2)
+		if resp, err = d.SendAndReceive(rid, payload, defaultTimeout); err != nil {
+			return nil, err
+		}
+		return ParseEqSettings(resp)
+	}
+	return settings, nil
+}
+
 // SendKeepalive sends the a4 0e 99 heartbeat.
 func (d *Device) SendKeepalive() error {
 	rid, payload := BuildKeepalive()

@@ -17,12 +17,9 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"strings"
 	"time"
@@ -30,6 +27,7 @@ import (
 	"fyne.io/systray"
 
 	"github.com/charlietran/scapectl/internal/config"
+	"github.com/charlietran/scapectl/internal/eq"
 	"github.com/charlietran/scapectl/internal/hid"
 	"github.com/charlietran/scapectl/internal/monitor"
 	"github.com/charlietran/scapectl/internal/tray"
@@ -52,6 +50,8 @@ func main() {
 			cmdRaw(os.Args[2:])
 		case "sniff":
 			cmdSniff()
+		case "eq":
+			cmdEq(os.Args[2:])
 		case "eq-code":
 			cmdEqCode(os.Args[2:])
 		case "version", "-v", "--version":
@@ -214,80 +214,59 @@ func cmdSniff() {
 	}
 }
 
-func cmdEqCode(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: scapectl eq-code <decode|encode> [args]")
-		fmt.Fprintln(os.Stderr, "  decode <code>   Decode an EQ code string")
-		fmt.Fprintln(os.Stderr, "  encode <bands>  Encode bands (not yet implemented)")
+func cmdEq(args []string) {
+	if len(args) != 0 {
+		fmt.Fprintln(os.Stderr, "usage: scapectl eq")
 		os.Exit(1)
 	}
+	cmdEqShow()
+}
 
-	switch args[0] {
-	case "decode":
-		if len(args) < 2 {
-			fmt.Fprintln(os.Stderr, "usage: scapectl eq-code decode <code>")
-			os.Exit(1)
+// cmdEqShow prints the parametric bands stored in each EQ slot.
+func cmdEqShow() {
+	dev, err := hid.OpenFirst()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	defer dev.Close()
+
+	failed := false
+	for slot := 1; slot <= 3; slot++ {
+		s, err := dev.GetEqSettings(slot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "slot %d: %v\n", slot, err)
+			failed = true
+			continue
 		}
-		decodeEqCode(args[1])
-	default:
-		fmt.Fprintf(os.Stderr, "unknown eq-code subcommand: %s\n", args[0])
+		fmt.Printf("Slot %d (profile %d, rates %#x): %d bands\n", slot, s.ProfileID, s.SamplingRate, len(s.Points))
+		printBands(s.Points)
+	}
+	if failed {
+		dev.Close()
 		os.Exit(1)
 	}
 }
 
-func decodeEqCode(code string) {
-	data, err := base64.StdEncoding.DecodeString(code)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid base64: %v\n", err)
-		os.Exit(1)
-	}
-
-	if len(data) < 3 {
-		fmt.Fprintln(os.Stderr, "EQ code too short")
-		os.Exit(1)
-	}
-
-	version := data[0]
-	numBands := int(data[1])
-
-	if version != 1 {
-		fmt.Fprintf(os.Stderr, "unsupported EQ code version: %d\n", version)
-		os.Exit(1)
-	}
-
-	// Verify checksum (XOR of all bytes except last)
-	var checksum byte
-	for i := 0; i < len(data)-1; i++ {
-		checksum ^= data[i]
-	}
-	if checksum != data[len(data)-1] {
-		fmt.Fprintf(os.Stderr, "checksum mismatch: computed 0x%02x, stored 0x%02x\n", checksum, data[len(data)-1])
-		os.Exit(1)
-	}
-
-	filterNames := map[byte]string{0: "Peaking", 1: "LowShelf", 2: "HighShelf"}
-
-	fmt.Printf("EQ Code: %d bands\n\n", numBands)
-	offset := 2
-	for i := 0; i < numBands; i++ {
-		if offset+11 > len(data) {
-			fmt.Fprintf(os.Stderr, "truncated data at band %d\n", i+1)
-			os.Exit(1)
-		}
-		filterType := data[offset]
-		gain := math.Float32frombits(binary.LittleEndian.Uint32(data[offset+1:]))
-		q := math.Float32frombits(binary.LittleEndian.Uint32(data[offset+5:]))
-		freq := binary.LittleEndian.Uint16(data[offset+9:])
-
-		name := filterNames[filterType]
-		if name == "" {
-			name = fmt.Sprintf("type%d", filterType)
-		}
-
+func printBands(bands []hid.EqPoint) {
+	for i, b := range bands {
 		fmt.Printf("  Band %d: %-10s  freq=%5dHz  gain=%+.1fdB  Q=%.2f\n",
-			i+1, name, freq, gain, q)
-		offset += 15
+			i+1, b.Type, b.FreqHz, b.GainDB, b.Q)
 	}
+}
+
+func cmdEqCode(args []string) {
+	if len(args) != 2 || args[0] != "decode" {
+		fmt.Fprintln(os.Stderr, "usage: scapectl eq-code decode <code>")
+		os.Exit(1)
+	}
+	bands, err := eq.ParseCode(args[1])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("EQ Code: %d bands\n\n", len(bands))
+	printBands(bands)
 }
 
 func cmdHelp() {
@@ -299,7 +278,8 @@ Usage:
   scapectl status       Print headset status (battery, firmware, etc.)
   scapectl raw <hex>    Send raw HID report (for reverse engineering)
   scapectl sniff        Print all incoming HID data continuously
-  scapectl eq-code      Decode/encode EQ preset codes
+  scapectl eq           Print the EQ bands stored in each headset slot
+  scapectl eq-code      Decode an EQ preset code
   scapectl version      Print version
   scapectl help         Show this help
 

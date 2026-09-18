@@ -249,7 +249,29 @@ Scripts receive these environment variables:
 | `SCAPE_TIMESTAMP` | `2026-03-21T14:30:00-07:00`          |
 | `SCAPE_JSON`      | Full event as JSON                   |
 | `SCAPE_BATTERY`   | Battery % (BatteryLevel events only) |
+| `SCAPE_EQ_SLOT`   | Active EQ slot, `1`-`3`              |
+| `SCAPE_EQ_DATA`   | JSON bands of the new slot (EqChanged only), see below |
 | `SCAPE_DIR`       | Directory containing the scapectl executable |
+
+### Using EQ data in a script
+
+On `EqChanged`, `SCAPE_EQ_DATA` contains the active slot's bands, or is unset if the read failed:
+
+```json
+[{"type":"LowShelf","freq":400,"gain":8,"q":2},{"type":"Peak","freq":1100,"gain":4,"q":0.7}]
+```
+
+Rendering and notifications belong in your own scripts, not scapectl. For example, with a `notify-eq.sh` helper installed in your macOS config directory:
+
+```toml
+[[triggers]]
+event    = "EqChanged"
+script   = '/bin/bash "$HOME/Library/Application Support/scapectl/notify-eq.sh"'
+enabled  = true
+cooldown = 1
+```
+
+The helper reads `SCAPE_EQ_DATA` and `SCAPE_EQ_SLOT` from its environment. It can render a PNG with ImageMagick and display it with [alerter](https://github.com/vjeantet/alerter): `alerter --title Scape --message "EQ slot $SCAPE_EQ_SLOT" --content-image "$image" --timeout 3`. Keep the image until alerter exits. These tools and the helper are separate from scapectl; use absolute tool paths for launch-at-login.
 
 ### CLI
 
@@ -260,6 +282,8 @@ scapectl status       # Print battery, firmware, EQ slot, mic, connection info
 scapectl devices      # List connected Fractal HID devices
 scapectl sniff        # Continuously print incoming HID data
 scapectl raw 02 f1 21 # Send arbitrary HID bytes
+scapectl eq           # Print the EQ bands stored in each headset slot
+scapectl eq-code decode <code>   # Print the bands in an Adjust Pro EQ code
 ```
 
 On **macOS**, the binary is inside the app bundle. You can run CLI commands from it directly:
@@ -426,20 +450,32 @@ Lighting themes are uploaded as bulk data via `a4 01`/`a4 02`/`a4 03`. Simple on
 
 #### 0xA7 — DSP / Audio (EQ)
 
-| Command                  | Description                                           |
-| ------------------------ | ----------------------------------------------------- |
-| `a7 01 XX 01 YY`         | Init DSP slot (`XX`: 0x17/0x27/0x37 for driver 1/2/3) |
-| `a7 02 NN DD PP <5×f32>` | Set biquad coefficients (LE float32)                  |
-| `a7 03 DD 02 00 <UUID>`  | Set driver config with preset UUID                    |
-| `a7 04 DD 00/01`         | Enable/disable feature per driver                     |
-| `a7 05 NN DD PP`         | Set parameter per driver/band                         |
-| `a7 07 DD`               | Select EQ slot / apply driver config                  |
+Command names are from the Adjust Pro bundle's `DEVICE_TYPE_EQ` constants.
+
+| Command                  | Description                                                  |
+| ------------------------ | ------------------------------------------------------------ |
+| `a7 01 XX ...`           | SetEqSettings: `XX` = slot<<4 \| rate mask, then 11 bytes/band |
+| `a7 02 NN DD PP <5×f32>` | SetEqCoef: biquad coefficients (LE float32)                  |
+| `a7 03 SS ... <UUID>`    | CommitEq with the preset UUID                                |
+| `a7 04 SS 00`            | GetEqSettings: parametric bands of slot `SS` (see below)     |
+| `a7 04 SS 01`            | GetEqSettings metadata: preset UUID                          |
+| `a7 05 SS DD PP`         | GetEqCoef for slot, driver, band                             |
+| `a7 07 SS`               | SelectEqMode: switch the active slot                         |
+
+**`a7 04 SS 00` response:**
+
+| Byte      | Field                                                        |
+| --------- | ------------------------------------------------------------ |
+| 0-1       | Echo `a7 04`                                                 |
+| 2         | profile_id<<4 \| sampling rate mask (1 = 44.1k, 2 = 48k, 4 = 96k) |
+| 3 + 12×i  | Band i (0-4): enabled, filter type, freq u16 LE, gain f32 LE, Q f32 LE |
+
+Filter types: 0 Peak, 1 LowShelf, 2 HighShelf, 3 LowPass, 4 HighPass, 5 Notch, 6 BandPass. Empty user slots 2 and 3 fall back to factory presets in slots 4 and 5 (Adjust Pro does the same read).
 
 **EQ Architecture:**
 
 - 3 preset slots, each with up to 5 parametric EQ bands
 - Each band: frequency (Hz), Q factor, gain (dB), filter type
-- Filter types: 0 = peaking, 1 = low shelf, 2 = high shelf
 - Biquad coefficients (IIR second-order sections) are pre-computed per sampling rate
 - Driver IDs: 1, 2, 4 (corresponding to different audio paths/sample rates)
 - Coefficients per band: `EqCoefA = [a1, a2]`, `EqCoefB = [b0, b1, b2]`
