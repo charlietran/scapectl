@@ -1,11 +1,26 @@
 name: Release
 
-# Publishing a release from the GitHub Releases page (with a new or existing
-# tag) triggers this. It builds the assets, attaches them to that release,
-# then bumps the Homebrew cask on main. A local tools/release.sh run also
-# lands here via the release it creates. Drafts don't trigger it; publish
-# the draft when ready.
+# Two ways to cut a release from github.com:
+#
+#   * Actions tab -> Release -> "Run workflow". Leave the version blank to
+#     bump the patch number off the latest tag. This tags, builds, and
+#     publishes in one click.
+#   * Releases page -> publish a release. That tags and publishes; this
+#     workflow then builds the assets and attaches them.
+#
+# Either way CI builds all three platforms and bumps the Homebrew cask on
+# main. Drafts trigger nothing -- publish the draft when it's ready.
+#
+# The release this workflow creates on a "Run workflow" run does not trigger
+# the release:published path below: events raised by GITHUB_TOKEN never start
+# another workflow run, so there's no loop here.
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.0.16 (blank = bump the patch number)"
+        required: false
+        type: string
   release:
     types: [published]
 
@@ -20,32 +35,43 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history and tags: a "Run workflow" run reads the latest v*
+          # tag to work out the next patch number.
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
       - name: Build and release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash tools/release.sh "${GITHUB_REF#refs/tags/v}"
+          # On release:published, the version is the tag that was published.
+          # On "Run workflow", it's whatever was typed in -- blank means the
+          # script bumps the patch number itself.
+          VERSION: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.version }}
+        run: bash tools/release.sh "${VERSION}"
 
       # Keep Casks/scapectl.rb on main in sync with the tag that was just
       # released. The cask uses `sha256 :no_check`, so only the version line
       # needs to change. Skipped for pre-releases and when main is already at
       # this version (e.g. a local tools/release.sh run bumped it first);
       # retried a few times so a push that lands between our fetch and push
-      # doesn't fail the release.
+      # doesn't fail the release. The fetch is a full one: checkout above is
+      # unshallow, and re-shallowing here would risk a rejected push.
       - name: Bump Homebrew cask
         if: ${{ !github.event.release.prerelease }}
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF#refs/tags/v}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           for attempt in 1 2 3; do
-            git fetch --depth=1 origin main
+            git fetch origin main
             git checkout -B main FETCH_HEAD
 
             sed -i.bak -E "s|^(  version )\"[^\"]+\"|\1\"${VERSION}\"|" Casks/scapectl.rb
