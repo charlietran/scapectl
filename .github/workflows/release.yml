@@ -1,8 +1,13 @@
 name: Release
 
+# Publishing a release from the GitHub Releases page (with a new or existing
+# tag) triggers this. It builds the assets, attaches them to that release,
+# then bumps the Homebrew cask on main. A local tools/release.sh run also
+# lands here via the release it creates. Drafts don't trigger it; publish
+# the draft when ready.
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -27,10 +32,12 @@ jobs:
 
       # Keep Casks/scapectl.rb on main in sync with the tag that was just
       # released. The cask uses `sha256 :no_check`, so only the version line
-      # needs to change. Skipped when main is already at this version (e.g. a
-      # local tools/release.sh run bumped it first); retried a few times so a
-      # push that lands between our fetch and push doesn't fail the release.
+      # needs to change. Skipped for pre-releases and when main is already at
+      # this version (e.g. a local tools/release.sh run bumped it first);
+      # retried a few times so a push that lands between our fetch and push
+      # doesn't fail the release.
       - name: Bump Homebrew cask
+        if: ${{ !github.event.release.prerelease }}
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF#refs/tags/v}"

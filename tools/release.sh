@@ -6,7 +6,9 @@ set -euo pipefail
 #
 # If version is omitted, auto-increments the patch number from the latest tag.
 # When run locally, builds first, then tags, pushes, and publishes the release.
-# When run in CI ($GITHUB_ACTIONS set), skips tag creation (already triggered by push).
+# When run in CI ($GITHUB_ACTIONS set), the tag and release already exist
+# (published from the GitHub Releases page, or by a local run), so this only
+# builds the assets and attaches them to that release.
 # Steps are idempotent: re-running after a partial failure skips work that's done.
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -113,19 +115,26 @@ fi
 
 # ── Create GitHub Release ──
 #
-# Skip if a release already exists. Covers the race where CI was triggered
-# by the tag this local run just pushed, and the partial-failure re-run case.
+# In CI the release already exists: publishing one from the GitHub Releases
+# page is what triggers the workflow, so attach the freshly built assets to
+# it. --clobber replaces any assets already there, which makes re-runs safe
+# and means CI-built assets win over ones uploaded by a local run.
+
+ASSETS=(
+    "${BUILD_DIR}/Mac_ScapeCtl.zip"
+    "${BUILD_DIR}/Linux_ScapeCtl.tar.gz"
+    "${BUILD_DIR}/Win_ScapeCtl.zip"
+)
 
 if gh release view "${TAG}" >/dev/null 2>&1; then
-    echo "==> Release ${TAG} already exists, skipping creation."
+    echo "==> Release ${TAG} already exists, uploading assets..."
+    gh release upload "${TAG}" --clobber "${ASSETS[@]}"
 else
     echo "==> Creating GitHub release ${TAG}..."
     gh release create "${TAG}" \
         --title "${TAG}" \
         --generate-notes \
-        "${BUILD_DIR}/Mac_ScapeCtl.zip" \
-        "${BUILD_DIR}/Linux_ScapeCtl.tar.gz" \
-        "${BUILD_DIR}/Win_ScapeCtl.zip"
+        "${ASSETS[@]}"
 fi
 
 echo "==> Done! Release ${TAG} ready."
