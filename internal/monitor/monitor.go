@@ -68,6 +68,7 @@ type Event struct {
 	Type      EventType
 	Device    hid.DeviceInfo
 	Status    *hid.DeviceStatus // non-nil for HeadsetStatus events
+	Eq        *hid.EqSettings   // bands of the new slot, for EqChanged events
 	Timestamp time.Time
 }
 
@@ -400,10 +401,15 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 			})
 		}
 		if status.EqSlot != m.lastEqSlot && m.lastEqSlot != 0 {
+			eqSettings, err := dev.GetEqSettings(status.EqSlot)
+			if err != nil {
+				log.Printf("[monitor] read EQ slot %d: %v", status.EqSlot, err)
+			}
 			m.emit(Event{
 				Type:      EventEqChanged,
 				Device:    devInfo,
 				Status:    status,
+				Eq:        eqSettings,
 				Timestamp: time.Now(),
 			})
 		}

@@ -9,6 +9,8 @@
 //	SCAPE_PATH       = device path
 //	SCAPE_TIMESTAMP  = ISO 8601 timestamp
 //	SCAPE_BATTERY    = battery percentage (BatteryLevel events only)
+//	SCAPE_EQ_SLOT    = active EQ slot, 1-3
+//	SCAPE_EQ_DATA    = JSON bands of the new EQ slot (EqChanged events only)
 //	SCAPE_DIR        = directory containing the scapectl executable
 package triggers
 
@@ -141,6 +143,16 @@ func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {
 	// Add battery percentage for BatteryLevel events
 	if evt.Status != nil && evt.Status.BatteryPercent >= 0 {
 		env = append(env, fmt.Sprintf("SCAPE_BATTERY=%d", evt.Status.BatteryPercent))
+	}
+	if evt.Status != nil && evt.Status.EqSlot > 0 {
+		env = append(env, fmt.Sprintf("SCAPE_EQ_SLOT=%d", evt.Status.EqSlot))
+	}
+	if evt.Eq != nil {
+		if data, err := json.Marshal(evt.Eq.Points); err == nil {
+			env = append(env, "SCAPE_EQ_DATA="+string(data))
+		} else {
+			log.Printf("[triggers] encode EQ bands: %v", err)
+		}
 	}
 
 	// Add app directory so trigger scripts can reference bundled helpers (e.g. notify.ps1)

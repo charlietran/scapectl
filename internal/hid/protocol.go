@@ -77,14 +77,14 @@ var (
 	CmdKeepalive        = [3]byte{0xA4, 0x0E, 0x99}
 )
 
-// DSP/audio (family 0xA7)
+// EQ (family 0xA7). Names match the Adjust Pro bundle's DEVICE_TYPE_EQ commands.
 var (
-	CmdDSPInit          = [2]byte{0xA7, 0x01} // + slot_id, 0x01, preset
-	CmdDSPBiquad        = [2]byte{0xA7, 0x02} // + num_drivers, driver, band, 5×float32
-	CmdDSPDriverConfig  = [2]byte{0xA7, 0x03} // + driver, 0x02, 0x00, UUID...
-	CmdDSPFeatureToggle = [2]byte{0xA7, 0x04} // + driver, 0/1
-	CmdDSPParam         = [2]byte{0xA7, 0x05} // + num_drivers, driver, param
-	CmdDSPApply         = [2]byte{0xA7, 0x07} // + driver
+	CmdEqSetSettings = [2]byte{0xA7, 0x01} // + slot<<4|rates, then 11 bytes per band
+	CmdEqSetCoef     = [2]byte{0xA7, 0x02} // + num_drivers, driver, band, 5×float32
+	CmdEqCommit      = [2]byte{0xA7, 0x03} // + slot, ..., preset UUID
+	CmdEqGetSettings = [2]byte{0xA7, 0x04} // + slot, 0x00 (bands) / 0x01 (preset UUID)
+	CmdEqGetCoef     = [2]byte{0xA7, 0x05} // + slot, driver, band
+	CmdEqSelect      = [2]byte{0xA7, 0x07} // + slot
 )
 
 // ── Data structures ─────────────────────────────────
@@ -111,15 +111,15 @@ func (c ConnectionMode) String() string {
 type DeviceStatus struct {
 	Connected       bool
 	Mode            ConnectionMode
-	BatteryPercent  int // -1 if unknown
+	BatteryPercent  int    // -1 if unknown
 	FirmwareVersion string // headset firmware "major.minor"
 	DongleFWVersion string // dongle firmware "major.minor"
 
 	// Headset state (from f1 21 getUpdatedDeviceState)
 	BoomMicConnected bool
 	Muted            bool
-	EqSlot           int  // 1-3, active EQ preset slot
-	LightSlot        int  // active lighting preset slot
+	EqSlot           int // 1-3, active EQ preset slot
+	LightSlot        int // active lighting preset slot
 	SidetoneOn       bool
 	SidetoneVol      int
 	MNCOn            bool // Microphone Noise Cancellation
@@ -128,24 +128,81 @@ type DeviceStatus struct {
 	HallSensor       int // boom mic position sensor
 }
 
+// EqFilterType is the per-band filter shape (Adjust Pro's EqFilterType enum).
+type EqFilterType byte
+
+const (
+	EqPeak EqFilterType = iota
+	EqLowShelf
+	EqHighShelf
+	EqLowPass
+	EqHighPass
+	EqNotch
+	EqBandPass
+)
+
+var eqFilterNames = [...]string{"Peak", "LowShelf", "HighShelf", "LowPass", "HighPass", "Notch", "BandPass"}
+
+func (t EqFilterType) String() string {
+	if int(t) < len(eqFilterNames) {
+		return eqFilterNames[t]
+	}
+	return fmt.Sprintf("type%d", byte(t))
+}
+
+// MarshalText makes the type a readable name in SCAPE_EQ_DATA JSON.
+func (t EqFilterType) MarshalText() ([]byte, error) {
+	return []byte(t.String()), nil
+}
+
+func (t *EqFilterType) UnmarshalText(b []byte) error {
+	for i, n := range eqFilterNames {
+		if strings.EqualFold(n, string(b)) {
+			*t = EqFilterType(i)
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown EQ filter type %q", b)
+}
+
+// EqPoint is one parametric EQ band. The JSON form is what trigger scripts
+// receive in SCAPE_EQ_DATA.
+type EqPoint struct {
+	Type   EqFilterType `json:"type"`
+	FreqHz int          `json:"freq"`
+	GainDB float64      `json:"gain"`
+	Q      float64      `json:"q"`
+}
+
+// Validate checks the supported filter parameters, including non-finite wire values.
+func (p EqPoint) Validate() error {
+	if p.Type > EqBandPass {
+		return fmt.Errorf("unknown EQ filter type %d", p.Type)
+	}
+	if p.FreqHz <= 0 {
+		return fmt.Errorf("EQ frequency must be positive: %d", p.FreqHz)
+	}
+	if p.Q <= 0 || math.IsNaN(p.Q) || math.IsInf(p.Q, 0) {
+		return fmt.Errorf("EQ Q must be finite and positive: %g", p.Q)
+	}
+	if math.IsNaN(p.GainDB) || math.IsInf(p.GainDB, 0) {
+		return fmt.Errorf("EQ gain must be finite: %g", p.GainDB)
+	}
+	return nil
+}
+
+// EqSettings is the parametric EQ stored in one headset slot.
+type EqSettings struct {
+	ProfileID    int // slot the data came from; 0 = empty
+	SamplingRate int // bitmask: 1 = 44.1k, 2 = 48k, 4 = 96k
+	Points       []EqPoint
+}
+
 // BiquadCoeffs holds IIR biquad filter coefficients (second-order section).
 // The DSP applies these directly — no frequency/gain/Q conversion needed on-device.
 type BiquadCoeffs struct {
 	B0, A1, B1, A2, B2 float32
 }
-
-type EqBand struct {
-	FrequencyHz float64
-	GainDB      float64
-	Q           float64
-}
-
-type EqPreset struct {
-	Slot  int
-	Name  string
-	Bands []EqBand
-}
-
 
 // ── Report builders ─────────────────────────────────
 //
@@ -189,19 +246,51 @@ func BuildKeepalive() (byte, []byte) {
 	return buildCmd(CmdKeepalive[:])
 }
 
-func BuildGetEqCurve(slot int) (byte, []byte) {
-	// TODO: EQ read is done via config read (a4 05), not a direct query
-	return buildCmd(CmdStatusPoll[:])
+// BuildGetEqSettings reads the parametric bands stored in an EQ slot.
+// Sends [0xA7, 0x04, slot, 0x00] — the device's GetEqSettings command.
+func BuildGetEqSettings(slot int) (byte, []byte) {
+	return buildCmd([]byte{CmdEqGetSettings[0], CmdEqGetSettings[1], byte(slot), 0x00})
+}
+
+// ParseEqSettings decodes an a7 04 response.
+//
+//	[2]       profile_id<<4 | sampling_rate_mask
+//	[3+12*i]  band i (0-4): enabled, filter type, freq u16 LE, gain f32 LE, Q f32 LE
+func ParseEqSettings(data []byte) (*EqSettings, error) {
+	if len(data) < 63 {
+		return nil, fmt.Errorf("truncated EQ response: got %d bytes, need 63", len(data))
+	}
+	if data[0] != CmdEqGetSettings[0] || data[1] != CmdEqGetSettings[1] {
+		return nil, fmt.Errorf("unexpected EQ response command: %x", data[:2])
+	}
+	s := &EqSettings{
+		ProfileID:    int(data[2] >> 4),
+		SamplingRate: int(data[2] & 0x0f),
+		Points:       make([]EqPoint, 0, 5),
+	}
+	for i := range 5 {
+		off := 3 + 12*i
+		if data[off] == 0 {
+			continue
+		}
+		point := EqPoint{
+			Type:   EqFilterType(data[off+1]),
+			FreqHz: int(binary.LittleEndian.Uint16(data[off+2:])),
+			GainDB: float64(math.Float32frombits(binary.LittleEndian.Uint32(data[off+4:]))),
+			Q:      float64(math.Float32frombits(binary.LittleEndian.Uint32(data[off+8:]))),
+		}
+		if err := point.Validate(); err != nil {
+			return nil, fmt.Errorf("EQ band %d: %w", i+1, err)
+		}
+		s.Points = append(s.Points, point)
+	}
+	return s, nil
 }
 
 // BuildSetActiveEq switches the active EQ slot (1-3).
 // Sends [0xA7, 0x07, slot] — the device's SetEqSlot command.
 func BuildSetActiveEq(slot int) (byte, []byte) {
-	buf := make([]byte, ReportSize)
-	buf[0] = CmdDSPApply[0] // 0xA7
-	buf[1] = CmdDSPApply[1] // 0x07
-	buf[2] = byte(slot)
-	return ReportID, buf
+	return buildCmd([]byte{CmdEqSelect[0], CmdEqSelect[1], byte(slot)})
 }
 
 // BuildSetBiquad builds a DSP biquad coefficient command for a single band.
@@ -209,8 +298,8 @@ func BuildSetActiveEq(slot int) (byte, []byte) {
 // index (01/02/04), and band is the band index (0-4).
 func BuildSetBiquad(numDrivers, driver, band byte, coeffs BiquadCoeffs) (byte, []byte) {
 	buf := make([]byte, ReportSize)
-	buf[0] = CmdDSPBiquad[0]
-	buf[1] = CmdDSPBiquad[1]
+	buf[0] = CmdEqSetCoef[0]
+	buf[1] = CmdEqSetCoef[1]
 	buf[2] = numDrivers
 	buf[3] = driver
 	buf[4] = band
@@ -314,7 +403,7 @@ func ParseStatus(data []byte) *DeviceStatus {
 	if s.Connected {
 		s.BatteryPercent = int(data[14])
 		s.BoomMicConnected = data[3] != 0x00 // hall sensor: nonzero = boom mic attached
-		s.Muted = data[4] != 0x00 // 1 = muted (boom mic up)
+		s.Muted = data[4] != 0x00            // 1 = muted (boom mic up)
 		s.EqSlot = int(data[5])
 		s.LightSlot = int(data[6])
 		s.HallSensor = int(data[13])
@@ -361,4 +450,3 @@ func ParsePresence(data []byte) bool {
 	}
 	return data[2] != 0
 }
-
