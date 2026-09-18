@@ -31,7 +31,7 @@ type TriggerRule struct {
 	Script   string `toml:"script"` // Shell command or script path
 	Enabled  bool   `toml:"enabled"`
 	Cooldown int    `toml:"cooldown"` // Minimum seconds between firings (0 = no cooldown)
-	Battery  int    `toml:"battery"`  // For BatteryLevel event: fire when battery <= this % (default: 20)
+	Battery  int    `toml:"battery"`  // BatteryLevel: fire once per low episode at/below this % (default: 20)
 }
 
 func DefaultConfig() *Config {
@@ -214,7 +214,10 @@ verbose = false
 #   script   = Shell command to run (required)
 #   enabled  = true/false (required)
 #   cooldown = Minimum seconds between firings (optional, default: 0)
-#   battery  = For BatteryLevel: fire when battery <= this % (optional, default: 20)
+#   battery  = For BatteryLevel: warn once at or below this % (optional, default: 20)
+#              Re-arms after a valid reading above the threshold, not on a timer.
+#              Unknown readings do not fire or reset it. Config reload preserves
+#              unchanged rules' episodes; restarting scapectl resets them.
 #
 # Environment variables passed to scripts:
 #
@@ -243,7 +246,6 @@ verbose = false
 # script   = "osascript -e 'display notification \"Battery at $SCAPE_BATTERY%\" with title \"Scape\"'"
 # enabled  = true
 # battery  = 20
-# cooldown = 300
 #
 # Pass EQ data to your own helper (not bundled). See config.example.toml.
 #

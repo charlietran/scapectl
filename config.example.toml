@@ -45,7 +45,10 @@ verbose = false
 #   script   = Shell command to run (required)
 #   enabled  = true/false (required)
 #   cooldown = Minimum seconds between firings (optional, default: 0)
-#   battery  = For BatteryLevel: fire when battery <= this % (optional, default: 20)
+#   battery  = For BatteryLevel: warn once at or below this % (optional, default: 20)
+#              Re-arms after a valid reading above the threshold, not on a timer.
+#              Unknown readings do not fire or reset it. Config reload preserves
+#              unchanged rules' episodes; restarting scapectl resets them.
 #
 # Environment variables passed to scripts:
 #
@@ -76,7 +79,6 @@ verbose = false
 # script   = "osascript -e 'display notification \"Battery at $SCAPE_BATTERY%\" with title \"Scape\"'"
 # enabled  = true
 # battery  = 20
-# cooldown = 300
 #
 # Windows (uses notify.ps1 shipped alongside scapectl.exe):
 #
@@ -91,7 +93,6 @@ verbose = false
 # script   = 'powershell -ExecutionPolicy Bypass -File "%SCAPE_DIR%\notify.ps1" -Message "Battery at %SCAPE_BATTERY%%%"'
 # enabled  = true
 # battery  = 20
-# cooldown = 300
 
 # ── Audio switching ─────────────────────────────────────────────
 #

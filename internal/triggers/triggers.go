@@ -29,21 +29,30 @@ import (
 
 // Runner listens for monitor events and fires matching trigger scripts.
 type Runner struct {
-	cfg      *config.Config
-	mu       sync.Mutex
-	lastFire map[string]time.Time // event+script → last fire time (for cooldown)
+	cfg        *config.Config
+	mu         sync.Mutex
+	lastFire   map[string]time.Time // event+script → last fire time (for cooldown)
+	lowBattery map[batteryRuleKey]bool
+}
+
+type batteryRuleKey struct {
+	script    string
+	threshold int
 }
 
 // New creates a trigger runner with the given config.
 func New(cfg *config.Config) *Runner {
 	return &Runner{
-		cfg:      cfg,
-		lastFire: make(map[string]time.Time),
+		cfg:        cfg,
+		lastFire:   make(map[string]time.Time),
+		lowBattery: make(map[batteryRuleKey]bool),
 	}
 }
 
-// Reload swaps in a new config (e.g. after user edits the file).
+// Reload swaps in a new config without resetting cooldowns or low-battery episodes.
 func (r *Runner) Reload(cfg *config.Config) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.cfg = cfg
 	log.Printf("[triggers] reloaded (%d rules)", len(cfg.Triggers))
 }
@@ -57,10 +66,15 @@ func (r *Runner) Run(events <-chan monitor.Event) {
 
 // Enabled reports whether trigger script execution is enabled.
 func (r *Runner) Enabled() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.cfg.Settings.TriggersEnabled
 }
 
 func (r *Runner) dispatch(evt monitor.Event) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	evtStr := evt.Type.String()
 
 	// HeadsetStatus and BatteryLevel fire every poll — only log in verbose mode
@@ -78,6 +92,7 @@ func (r *Runner) dispatch(evt monitor.Event) {
 		return
 	}
 
+	now := time.Now()
 	for _, rule := range r.cfg.Triggers {
 		if !rule.Enabled {
 			continue
@@ -86,36 +101,51 @@ func (r *Runner) dispatch(evt monitor.Event) {
 			continue
 		}
 
-		// BatteryLevel: only fire if battery <= configured threshold
-		if evt.Type == monitor.EventBatteryLevel && evt.Status != nil {
-			threshold := rule.Battery
-			if threshold <= 0 {
-				threshold = 20 // default
-			}
-			if evt.Status.BatteryPercent > threshold {
-				continue
-			}
-		}
-
-		// Cooldown: skip if fired too recently. Keyed by event+script so two
-		// events sharing one script don't share a cooldown.
-		if rule.Cooldown > 0 {
-			key := rule.Event + "\x00" + rule.Script
-			r.mu.Lock()
-			last, exists := r.lastFire[key]
-			cooldownDur := time.Duration(rule.Cooldown) * time.Second
-			if exists && time.Since(last) < cooldownDur {
-				r.mu.Unlock()
-				continue
-			}
-			r.lastFire[key] = time.Now()
-			r.mu.Unlock()
+		if !r.shouldFire(rule, evt, now) {
+			continue
 		}
 
 		log.Printf("[triggers] firing '%s' for %s event", rule.Script, evtStr)
 
 		go r.exec(rule, evt)
 	}
+}
+
+// shouldFire records an allowed dispatch. The caller must hold r.mu.
+func (r *Runner) shouldFire(rule config.TriggerRule, evt monitor.Event, now time.Time) bool {
+	var batteryKey batteryRuleKey
+	if evt.Type == monitor.EventBatteryLevel {
+		if evt.Status == nil || evt.Status.BatteryPercent < 0 {
+			return false
+		}
+		threshold := rule.Battery
+		if threshold <= 0 {
+			threshold = 20
+		}
+		batteryKey = batteryRuleKey{script: rule.Script, threshold: threshold}
+		if evt.Status.BatteryPercent > threshold {
+			delete(r.lowBattery, batteryKey)
+			return false
+		}
+		if r.lowBattery[batteryKey] {
+			return false
+		}
+	}
+
+	// Keep cooldowns isolated by event+script, including battery rules.
+	if rule.Cooldown > 0 {
+		key := rule.Event + "\x00" + rule.Script
+		if last, exists := r.lastFire[key]; exists && now.Sub(last) < time.Duration(rule.Cooldown)*time.Second {
+			return false
+		}
+		r.lastFire[key] = now
+	}
+
+	// A cooldown-blocked reading must not consume the next low-battery episode.
+	if evt.Type == monitor.EventBatteryLevel {
+		r.lowBattery[batteryKey] = true
+	}
+	return true
 }
 
 func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {

@@ -215,8 +215,10 @@ cooldown = 5
 | `event`    | Yes      | Event name (see table below)                                                                                                           |
 | `script`   | Yes      | Shell command to run                                                                                                                   |
 | `enabled`  | Yes      | `true` or `false`                                                                                                                      |
-| `cooldown` | No       | Minimum seconds between firings (default: 0). Prevents a rule from running repeatedly if the event fires in quick succession. Tracked per event, so two events can share one script without sharing a cooldown. |
-| `battery`  | No       | For `BatteryLevel` only: fire when battery <= this % (default: 20)                                                                     |
+| `cooldown` | No       | Minimum seconds between firings (default: 0). Tracked per event and script, so two events can share one script without sharing a cooldown. For battery rules, this can delay a new episode's warning but never repeats a warning within an episode. |
+| `battery`  | No       | For `BatteryLevel` only: fire once per low-battery episode at or below this % (default: 20). |
+
+Battery rules re-arm only after a valid reading above their threshold. Missing or unknown readings neither fire nor reset a warning. Each script/threshold pair tracks its own episode; reloading the config preserves that state for unchanged rules. Restarting scapectl resets it, so a still-low battery can notify again after restart.
 
 ### Available events
 
