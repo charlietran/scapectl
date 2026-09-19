@@ -18,6 +18,11 @@ tray_display = "icon"
 # Maximum 16 characters (longer strings are truncated).
 tray_text = "Scape"
 
+# Icon set for the menu bar icon: "ghost", "outline" or "dim". Each set has
+# icons for no receiver, disconnected, connected and muted. Switch from the
+# Icon Set menu.
+tray_icon_set = "ghost"
+
 # Enable trigger scripts (see examples below). Off by default.
 triggers_enabled = false
 

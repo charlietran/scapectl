@@ -2,7 +2,7 @@
 package tray
 
 import (
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -23,14 +23,26 @@ import (
 	"github.com/charlietran/scapectl/internal/triggers"
 )
 
-//go:embed icons/icon_black.png
-var iconBlackPNG []byte // macOS template icon (black + alpha)
+//go:embed icons/*/*.png icons/*/*.ico
+var iconFS embed.FS
 
-//go:embed icons/icon_white.png
-var iconWhitePNG []byte // Linux icon
+// iconSets lists the shipped icon sets, in menu order. Regenerate with
+// python3 icons/states/gen.py install.
+var iconSets = []string{"ghost", "outline", "dim"}
 
-//go:embed icons/icon_white.ico
-var iconWhiteICO []byte // Windows icon
+// iconBytes returns the embedded icon for a set, a state ("nodongle",
+// "disconnected", "connected", "muted") and a variant ("black.png",
+// "white.png", "white.ico"). Unknown sets fall back to the first one.
+func iconBytes(set, state, variant string) []byte {
+	b, err := iconFS.ReadFile("icons/" + set + "/" + state + "_" + variant)
+	if err != nil && set != iconSets[0] {
+		return iconBytes(iconSets[0], state, variant)
+	}
+	if err != nil {
+		panic(err) // embedded file missing: build error, not runtime
+	}
+	return b
+}
 
 // clickCh returns the ClickedCh for a menu item, or nil if the item is nil.
 // A nil channel is never selected in a select statement.
@@ -78,35 +90,39 @@ type App struct {
 	mu       sync.Mutex
 
 	// Menu items
-	mReceiver    *systray.MenuItem
-	mDongleFW    *systray.MenuItem
-	mHeadset     *systray.MenuItem
-	mHeadsetFW   *systray.MenuItem
-	mBattery     *systray.MenuItem
-	dongleFWDone  bool // true after dongle FW has been queried
-	headsetFWDone bool // true after headset FW has been queried
-	headsetShown  bool // true after headset controls have been shown
-	mEqParent  *systray.MenuItem
-	mEq        [3]*systray.MenuItem
-	mLightTog  *systray.MenuItem
-	lightOn    bool
-	mMicMute   *systray.MenuItem
+	mReceiver     *systray.MenuItem
+	mDongleFW     *systray.MenuItem
+	mHeadset      *systray.MenuItem
+	mHeadsetFW    *systray.MenuItem
+	mBattery      *systray.MenuItem
+	dongleFWDone  bool   // true after dongle FW has been queried
+	headsetFWDone bool   // true after headset FW has been queried
+	headsetShown  bool   // true after headset controls have been shown
+	iconState     string // "nodongle", "disconnected", "connected" or "muted"
+	animSeq       uint64 // bumped per state change to cancel a running animation
+	mEqParent     *systray.MenuItem
+	mEq           [3]*systray.MenuItem
+	mLightTog     *systray.MenuItem
+	lightOn       bool
+	mMicMute      *systray.MenuItem
 	mMNCTog       *systray.MenuItem
 	mncOn         bool
-	mSidetone        *systray.MenuItem
-	mSidetoneLvl     [11]*systray.MenuItem // 0%, 10%, 20%... 100%
-	sidetoneSetAt    time.Time            // when sidetone was last manually set
+	mSidetone     *systray.MenuItem
+	mSidetoneLvl  [11]*systray.MenuItem // 0%, 10%, 20%... 100%
+	sidetoneSetAt time.Time             // when sidetone was last manually set
 	// Cached UI state to avoid redundant systray calls
-	lastBattery    int
-	lastEqSlot     int
-	lastLightOn    bool
-	lastMNCOn      bool
-	lastSidetone   int
-	lastMicBoom    bool
-	lastMicMuted   bool
-	mDispIcon    *systray.MenuItem // macOS only: template icon (auto light/dark)
-	mDispWhite   *systray.MenuItem // Linux only: white icon
-	mDispText    *systray.MenuItem // macOS + Linux: text label
+	lastBattery  int
+	lastEqSlot   int
+	lastLightOn  bool
+	lastMNCOn    bool
+	lastSidetone int
+	lastMicBoom  bool
+	lastMicMuted bool
+	mDispIcon    *systray.MenuItem   // macOS only: template icon (auto light/dark)
+	mIconSet     []*systray.MenuItem // one per iconSets entry
+	iconSetCh    chan string         // fan-in of mIconSet clicks
+	mDispWhite   *systray.MenuItem   // Linux only: white icon
+	mDispText    *systray.MenuItem   // macOS + Linux: text label
 	mTriggers    *systray.MenuItem
 	mAutostart   *systray.MenuItem
 	mConfigDir   *systray.MenuItem
@@ -181,6 +197,19 @@ func (a *App) OnReady() {
 		}
 		a.mDispText = mDisp.AddSubMenuItem("Text", "")
 		a.updateDispCheck()
+
+		mSets := systray.AddMenuItem("Icon Set", "")
+		a.iconSetCh = make(chan string)
+		for _, name := range iconSets {
+			item := mSets.AddSubMenuItem(name, "")
+			a.mIconSet = append(a.mIconSet, item)
+			go func(name string, ch <-chan struct{}) {
+				for range ch {
+					a.iconSetCh <- name
+				}
+			}(name, item.ClickedCh)
+		}
+		a.updateIconSetCheck()
 	}
 
 	// ── Utility ──
@@ -250,6 +279,8 @@ func (a *App) handleClicks() {
 			a.setDisplay("white")
 		case <-clickCh(a.mDispText):
 			a.setDisplay("text")
+		case name := <-a.iconSetCh:
+			a.setIconSet(name)
 		case <-a.mTriggers.ClickedCh:
 			a.toggleTriggers()
 		case <-a.mAutostart.ClickedCh:
@@ -287,6 +318,7 @@ func (a *App) handleMonitorEvents() {
 			a.mDongleFW.Hide()
 			a.mHeadsetFW.Hide()
 			a.resetCachedState()
+			a.setIconState("disconnected")
 
 		case monitor.EventDongleDisconnected:
 			a.mReceiver.SetTitle("USB Receiver: Disconnected")
@@ -300,9 +332,11 @@ func (a *App) handleMonitorEvents() {
 			a.headsetShown = false
 			a.mu.Unlock()
 			a.resetCachedState()
+			a.setIconState("nodongle")
 
 		case monitor.EventHeadsetPowerOn:
 			a.mHeadset.SetTitle("Headset: Connected")
+			a.setIconState("connected")
 
 		case monitor.EventHeadsetPowerOff:
 			a.mHeadset.SetTitle("Headset: Disconnected")
@@ -313,6 +347,7 @@ func (a *App) handleMonitorEvents() {
 			a.headsetShown = false
 			a.mu.Unlock()
 			a.resetCachedState()
+			a.setIconState("disconnected")
 
 		case monitor.EventHeadsetStatus:
 			s := evt.Status
@@ -343,6 +378,11 @@ func (a *App) handleMonitorEvents() {
 				a.lastMicBoom = s.BoomMicConnected
 				a.lastMicMuted = s.Muted
 				a.updateMicStatus(s.BoomMicConnected, s.Muted)
+			}
+			if s.Muted {
+				a.setIconState("muted")
+			} else {
+				a.setIconState("connected")
 			}
 			if s.BatteryPercent >= 0 && s.BatteryPercent != a.lastBattery {
 				a.lastBattery = s.BatteryPercent
@@ -615,11 +655,48 @@ func (a *App) reloadConfig() {
 	log.Printf("[tray] config reloaded (%d triggers)", len(cfg.Triggers))
 }
 
+// setIconState swaps the tray icon when the headset state changes. On macOS
+// in icon mode the swap is animated (see anim.go).
+func (a *App) setIconState(state string) {
+	a.mu.Lock()
+	from := a.iconState
+	a.iconState = state
+	a.animSeq++
+	seq := a.animSeq
+	mode := effectiveMode(a.cfg.Settings.TrayDisplay)
+	set := a.cfg.Settings.TrayIconSet
+	a.mu.Unlock()
+	if from == state {
+		return
+	}
+	if runtime.GOOS != "darwin" || mode != "icon" {
+		a.applyDisplay()
+		return
+	}
+	go func() {
+		for _, f := range iconFrames(set, from, state) {
+			a.mu.Lock()
+			stale := a.animSeq != seq
+			a.mu.Unlock()
+			if stale {
+				return
+			}
+			systray.SetTemplateIcon(f.png, f.png)
+			time.Sleep(f.hold)
+		}
+	}()
+}
+
 func (a *App) applyDisplay() {
 	a.mu.Lock()
 	mode := effectiveMode(a.cfg.Settings.TrayDisplay)
 	text := a.cfg.Settings.TrayText
+	state := a.iconState
+	set := a.cfg.Settings.TrayIconSet
 	a.mu.Unlock()
+	if state == "" {
+		state = "nodongle"
+	}
 
 	if text == "" {
 		text = "Scape"
@@ -632,22 +709,48 @@ func (a *App) applyDisplay() {
 	case "icon":
 		switch runtime.GOOS {
 		case "darwin":
-			systray.SetTemplateIcon(iconBlackPNG, iconBlackPNG)
+			b := iconBytes(set, state, "black.png")
+			systray.SetTemplateIcon(b, b)
 		case "windows":
-			systray.SetIcon(iconWhiteICO)
+			systray.SetIcon(iconBytes(set, state, "white.ico"))
 		default:
-			systray.SetIcon(iconWhitePNG)
+			systray.SetIcon(iconBytes(set, state, "white.png"))
 		}
 		systray.SetTitle("")
 	case "white":
 		if runtime.GOOS == "windows" {
-			systray.SetIcon(iconWhiteICO)
+			systray.SetIcon(iconBytes(set, state, "white.ico"))
 		} else {
-			systray.SetIcon(iconWhitePNG)
+			systray.SetIcon(iconBytes(set, state, "white.png"))
 		}
 		systray.SetTitle("")
 	default: // "text"
 		systray.SetTitle(text)
+	}
+}
+
+// setIconSet switches icon sets, saves the choice and redraws the icon.
+func (a *App) setIconSet(name string) {
+	a.mu.Lock()
+	a.cfg.Settings.TrayIconSet = name
+	a.mu.Unlock()
+	if err := config.SetValue("tray_icon_set", name); err != nil {
+		log.Printf("[tray] failed to save icon set: %v", err)
+	}
+	a.updateIconSetCheck()
+	a.applyDisplay()
+}
+
+func (a *App) updateIconSetCheck() {
+	a.mu.Lock()
+	cur := a.cfg.Settings.TrayIconSet
+	a.mu.Unlock()
+	for i, item := range a.mIconSet {
+		if iconSets[i] == cur {
+			item.SetTitle("● " + iconSets[i])
+		} else {
+			item.SetTitle("  " + iconSets[i])
+		}
 	}
 }
 
