@@ -22,6 +22,7 @@ type Settings struct {
 	PollIntervalMS  int    `toml:"poll_interval_ms"`
 	TrayDisplay     string `toml:"tray_display"`     // "icon", "white", or "text"
 	TrayText        string `toml:"tray_text"`        // custom text when tray_display is "text" (max 16 chars)
+	TrayIconSet     string `toml:"tray_icon_set"`    // "ghost", "outline" or "dim"
 	TriggersEnabled bool   `toml:"triggers_enabled"` // enable trigger script execution
 	Verbose         bool   `toml:"verbose"`          // enable verbose logging
 }
@@ -40,6 +41,7 @@ func DefaultConfig() *Config {
 			PollIntervalMS: 1500,
 			TrayDisplay:    "icon",
 			TrayText:       "Scape",
+			TrayIconSet:    "ghost",
 		},
 		Triggers: nil,
 	}
