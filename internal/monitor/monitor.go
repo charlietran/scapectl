@@ -28,6 +28,8 @@ const (
 	EventRgbOff                              // RGB lighting turned off
 	EventMncOn                               // Mic Noise Cancellation enabled
 	EventMncOff                              // Mic Noise Cancellation disabled
+	EventBoomAttached                        // Boom mic plugged in
+	EventBoomDetached                        // Boom mic unplugged (built-in mic in use)
 )
 
 func (e EventType) String() string {
@@ -58,6 +60,10 @@ func (e EventType) String() string {
 		return "MncOn"
 	case EventMncOff:
 		return "MncOff"
+	case EventBoomAttached:
+		return "BoomAttached"
+	case EventBoomDetached:
+		return "BoomDetached"
 	default:
 		return "Unknown"
 	}
@@ -88,6 +94,7 @@ type Monitor struct {
 	lastEqSlot     int         // last known EQ slot
 	lastRgbOn      bool        // last known RGB state
 	lastMncOn      bool        // last known MNC state
+	lastBoom       bool        // last known boom mic attachment
 }
 
 // New creates a monitor that polls at the given interval.
@@ -386,12 +393,26 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 			})
 		}
 
+
 		// Emit state change events for mic, EQ, RGB
 		if status.Muted != m.lastMuted {
 			m.lastMuted = status.Muted
 			evtType := EventMicUnmuted
 			if status.Muted {
 				evtType = EventMicMuted
+			}
+			m.emit(Event{
+				Type:      evtType,
+				Device:    devInfo,
+				Status:    status,
+				Timestamp: time.Now(),
+			})
+		}
+		if status.BoomMicConnected != m.lastBoom {
+			m.lastBoom = status.BoomMicConnected
+			evtType := EventBoomDetached
+			if status.BoomMicConnected {
+				evtType = EventBoomAttached
 			}
 			m.emit(Event{
 				Type:      evtType,
