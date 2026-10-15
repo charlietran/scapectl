@@ -24,13 +24,13 @@ type frame struct {
 
 // iconFrames returns the frame sequence for a transition, ending on the
 // final state's icon.
-func iconFrames(set, from, to string) []frame {
-	toPNG := iconBytes(set, to, "black.png")
+func iconFrames(from, to string) []frame {
+	toPNG := iconBytes(to, "black.png")
 	if from == "" {
 		return []frame{{toPNG, 0}}
 	}
 	var frames []frame
-	for _, f := range crossfade(iconBytes(set, from, "black.png"), toPNG) {
+	for _, f := range crossfade(iconBytes(from, "black.png"), toPNG) {
 		frames = append(frames, frame{f, fadeStep})
 	}
 	return frames

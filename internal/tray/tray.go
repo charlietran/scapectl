@@ -23,21 +23,14 @@ import (
 	"github.com/charlietran/scapectl/internal/triggers"
 )
 
-//go:embed icons/*/*.png icons/*/*.ico
+//go:embed icons/*.png icons/*.ico
 var iconFS embed.FS
 
-// iconSets lists the shipped icon sets, in menu order. Regenerate with
-// python3 icons/states/gen.py install.
-var iconSets = []string{"ghost", "outline", "dim"}
-
-// iconBytes returns the embedded icon for a set, a state ("nodongle",
+// iconBytes returns the embedded icon for a state ("nodongle",
 // "disconnected", "connected", "muted") and a variant ("black.png",
-// "white.png", "white.ico"). Unknown sets fall back to the first one.
-func iconBytes(set, state, variant string) []byte {
-	b, err := iconFS.ReadFile("icons/" + set + "/" + state + "_" + variant)
-	if err != nil && set != iconSets[0] {
-		return iconBytes(iconSets[0], state, variant)
-	}
+// "white.png", "white.ico"). Regenerate with python3 icons/states/gen.py install.
+func iconBytes(state, variant string) []byte {
+	b, err := iconFS.ReadFile("icons/" + state + "_" + variant)
 	if err != nil {
 		panic(err) // embedded file missing: build error, not runtime
 	}
@@ -118,11 +111,9 @@ type App struct {
 	lastSidetone int
 	lastMicBoom  bool
 	lastMicMuted bool
-	mDispIcon    *systray.MenuItem   // macOS only: template icon (auto light/dark)
-	mIconSet     []*systray.MenuItem // one per iconSets entry
-	iconSetCh    chan string         // fan-in of mIconSet clicks
-	mDispWhite   *systray.MenuItem   // Linux only: white icon
-	mDispText    *systray.MenuItem   // macOS + Linux: text label
+	mDispIcon    *systray.MenuItem // macOS only: template icon (auto light/dark)
+	mDispWhite   *systray.MenuItem // Linux only: white icon
+	mDispText    *systray.MenuItem // macOS + Linux: text label
 	mTriggers    *systray.MenuItem
 	mAutostart   *systray.MenuItem
 	mConfigDir   *systray.MenuItem
@@ -197,19 +188,6 @@ func (a *App) OnReady() {
 		}
 		a.mDispText = mDisp.AddSubMenuItem("Text", "")
 		a.updateDispCheck()
-
-		mSets := systray.AddMenuItem("Icon Set", "")
-		a.iconSetCh = make(chan string)
-		for _, name := range iconSets {
-			item := mSets.AddSubMenuItem(name, "")
-			a.mIconSet = append(a.mIconSet, item)
-			go func(name string, ch <-chan struct{}) {
-				for range ch {
-					a.iconSetCh <- name
-				}
-			}(name, item.ClickedCh)
-		}
-		a.updateIconSetCheck()
 	}
 
 	// ── Utility ──
@@ -279,8 +257,6 @@ func (a *App) handleClicks() {
 			a.setDisplay("white")
 		case <-clickCh(a.mDispText):
 			a.setDisplay("text")
-		case name := <-a.iconSetCh:
-			a.setIconSet(name)
 		case <-a.mTriggers.ClickedCh:
 			a.toggleTriggers()
 		case <-a.mAutostart.ClickedCh:
@@ -670,14 +646,13 @@ func (a *App) setIconState(state string) {
 	a.animSeq++
 	seq := a.animSeq
 	mode := effectiveMode(a.cfg.Settings.TrayDisplay)
-	set := a.cfg.Settings.TrayIconSet
 	a.mu.Unlock()
 	if runtime.GOOS != "darwin" || mode != "icon" {
 		a.applyDisplay()
 		return
 	}
 	go func() {
-		for _, f := range iconFrames(set, from, state) {
+		for _, f := range iconFrames(from, state) {
 			a.mu.Lock()
 			stale := a.animSeq != seq
 			a.mu.Unlock()
@@ -695,7 +670,6 @@ func (a *App) applyDisplay() {
 	mode := effectiveMode(a.cfg.Settings.TrayDisplay)
 	text := a.cfg.Settings.TrayText
 	state := a.iconState
-	set := a.cfg.Settings.TrayIconSet
 	a.mu.Unlock()
 	if state == "" {
 		state = "nodongle"
@@ -712,48 +686,23 @@ func (a *App) applyDisplay() {
 	case "icon":
 		switch runtime.GOOS {
 		case "darwin":
-			b := iconBytes(set, state, "black.png")
+			b := iconBytes(state, "black.png")
 			systray.SetTemplateIcon(b, b)
 		case "windows":
-			systray.SetIcon(iconBytes(set, state, "white.ico"))
+			systray.SetIcon(iconBytes(state, "white.ico"))
 		default:
-			systray.SetIcon(iconBytes(set, state, "white.png"))
+			systray.SetIcon(iconBytes(state, "white.png"))
 		}
 		systray.SetTitle("")
 	case "white":
 		if runtime.GOOS == "windows" {
-			systray.SetIcon(iconBytes(set, state, "white.ico"))
+			systray.SetIcon(iconBytes(state, "white.ico"))
 		} else {
-			systray.SetIcon(iconBytes(set, state, "white.png"))
+			systray.SetIcon(iconBytes(state, "white.png"))
 		}
 		systray.SetTitle("")
 	default: // "text"
 		systray.SetTitle(text)
-	}
-}
-
-// setIconSet switches icon sets, saves the choice and redraws the icon.
-func (a *App) setIconSet(name string) {
-	a.mu.Lock()
-	a.cfg.Settings.TrayIconSet = name
-	a.mu.Unlock()
-	if err := config.SetValue("tray_icon_set", name); err != nil {
-		log.Printf("[tray] failed to save icon set: %v", err)
-	}
-	a.updateIconSetCheck()
-	a.applyDisplay()
-}
-
-func (a *App) updateIconSetCheck() {
-	a.mu.Lock()
-	cur := a.cfg.Settings.TrayIconSet
-	a.mu.Unlock()
-	for i, item := range a.mIconSet {
-		if iconSets[i] == cur {
-			item.SetTitle("● " + iconSets[i])
-		} else {
-			item.SetTitle("  " + iconSets[i])
-		}
 	}
 }
 
