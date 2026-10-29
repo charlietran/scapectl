@@ -355,7 +355,8 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 	}
 
 	// Emit power state change (including first poll)
-	if !m.headsetChecked || status.Connected != m.headsetOnline {
+	powerChanged := !m.headsetChecked || status.Connected != m.headsetOnline
+	if powerChanged {
 		m.headsetChecked = true
 		m.headsetOnline = status.Connected
 		evtType := EventHeadsetPowerOn
@@ -386,6 +387,17 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 			})
 		}
 
+		// The first poll after power-on only records mic, EQ, RGB and MNC
+		// state. Their last* values are stale or zero, so a "change" here
+		// would fire a burst of notifications alongside HeadsetPowerOn.
+		if powerChanged {
+			m.lastMuted = status.Muted
+			m.lastEqSlot = status.EqSlot
+			m.lastRgbOn = status.LightSlot > 0
+			m.lastMncOn = status.MNCOn
+			return
+		}
+
 		// Emit state change events for mic, EQ, RGB
 		if status.Muted != m.lastMuted {
 			m.lastMuted = status.Muted
@@ -400,7 +412,7 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 				Timestamp: time.Now(),
 			})
 		}
-		if status.EqSlot != m.lastEqSlot && m.lastEqSlot != 0 {
+		if status.EqSlot != m.lastEqSlot {
 			eqSettings, err := dev.GetEqSettings(status.EqSlot)
 			if err != nil {
 				log.Printf("[monitor] read EQ slot %d: %v", status.EqSlot, err)
@@ -416,7 +428,7 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 		m.lastEqSlot = status.EqSlot
 
 		rgbOn := status.LightSlot > 0
-		if rgbOn != m.lastRgbOn && m.headsetChecked {
+		if rgbOn != m.lastRgbOn {
 			evtType := EventRgbOff
 			if rgbOn {
 				evtType = EventRgbOn
@@ -430,7 +442,7 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 		}
 		m.lastRgbOn = rgbOn
 
-		if status.MNCOn != m.lastMncOn && m.headsetChecked {
+		if status.MNCOn != m.lastMncOn {
 			evtType := EventMncOff
 			if status.MNCOn {
 				evtType = EventMncOn
