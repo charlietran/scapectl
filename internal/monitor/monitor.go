@@ -82,13 +82,18 @@ type Monitor struct {
 	subs           []chan Event              // fan-out subscriber channels
 	running        bool
 	dev            *hid.Device // persistent HID connection
-	headsetOnline  bool        // last known headset power state
-	headsetChecked bool        // true after first status poll
+	headsetOnline  bool        // last emitted headset power state
+	headsetChecked bool        // true after the first power event
+	seenOnline     bool        // raw power reading while settling after connect
+	seenSince      time.Time   // when seenOnline last changed
 	lastMuted      bool        // last known mic mute state
 	lastEqSlot     int         // last known EQ slot
 	lastRgbOn      bool        // last known RGB state
 	lastMncOn      bool        // last known MNC state
 }
+
+// powerSettle is how long a headset power reading must hold before it counts.
+const powerSettle = 2 * time.Second
 
 // New creates a monitor that polls at the given interval.
 func New(interval time.Duration) *Monitor {
@@ -300,6 +305,7 @@ func (m *Monitor) scanBus() {
 				})
 			}
 			m.headsetChecked = false
+			m.seenSince = time.Time{}
 			m.emit(Event{
 				Type:      EventDongleDisconnected,
 				Device:    dev,
@@ -354,10 +360,8 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 		break
 	}
 
-	// Emit power state change (including first poll)
-	if !m.headsetChecked || status.Connected != m.headsetOnline {
-		m.headsetChecked = true
-		m.headsetOnline = status.Connected
+	now := time.Now()
+	if m.powerChanged(status.Connected, now) {
 		evtType := EventHeadsetPowerOn
 		if !status.Connected {
 			evtType = EventHeadsetPowerOff
@@ -365,12 +369,12 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 		m.emit(Event{
 			Type:      evtType,
 			Device:    devInfo,
-			Timestamp: time.Now(),
+			Timestamp: now,
 		})
 	}
 
 	// Emit periodic status for UI updates (battery, EQ, etc.)
-	if status.Connected {
+	if status.Connected && m.headsetOnline {
 		m.emit(Event{
 			Type:      EventHeadsetStatus,
 			Device:    devInfo,
@@ -454,4 +458,27 @@ func (m *Monitor) emit(evt Event) {
 			log.Println("[monitor] subscriber channel full, dropping event")
 		}
 	}
+}
+
+// powerChanged records a raw power reading and reports whether the headset
+// power state changed. Right after the dongle connects (e.g. a KVM switch) it
+// can report a stale state, so the first reading only counts once it has held
+// for powerSettle. Later changes count immediately. Caller holds m.mu.
+func (m *Monitor) powerChanged(online bool, now time.Time) bool {
+	if m.headsetChecked {
+		changed := online != m.headsetOnline
+		m.headsetOnline = online
+		return changed
+	}
+	if m.seenSince.IsZero() || online != m.seenOnline {
+		m.seenOnline = online
+		m.seenSince = now
+		return false
+	}
+	if now.Sub(m.seenSince) < powerSettle {
+		return false
+	}
+	m.headsetChecked = true
+	m.headsetOnline = online
+	return true
 }
