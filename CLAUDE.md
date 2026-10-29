@@ -73,6 +73,7 @@ No CGO required. Cross-compilation does not need platform-specific headers.
 - Sidetone requires interleaved status polls between f1 34 commands (dongle firmware requirement)
 - The dongle sends unsolicited 11 21 reports — SendAndReceive filters by echo bytes to find the correct response
 - 11 21 byte 3 (headset present) is unreliable — flaps in a 3-tick cycle. Use f1 21 byte 18 for presence.
+- f1 21 byte 18 can be stale right after USB re-enumeration (KVM switch), so the first power event after connect waits for it to hold 2s (`powerSettle`).
 - Device is opened non-exclusive so the OS still receives volume/media key reports
 
 ## Reverse Engineering Workflow
