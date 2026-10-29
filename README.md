@@ -42,6 +42,7 @@ Grab the latest release for your platform from the [Releases page](https://githu
 
 ```sh
 brew tap charlietran/scapectl https://github.com/charlietran/scapectl
+brew trust charlietran/scapectl
 brew install --cask scapectl
 ```
 
