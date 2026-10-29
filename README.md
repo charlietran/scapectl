@@ -234,6 +234,8 @@ cooldown = 5
 | `RgbOff`             | RGB lighting turned off                            |
 | `MncOn`              | Mic Noise Cancellation enabled                     |
 | `MncOff`             | Mic Noise Cancellation disabled                    |
+| `BoomAttached`       | Boom mic plugged in                                |
+| `BoomDetached`       | Boom mic unplugged (built-in mic in use)           |
 
 ### Environment variables
 
