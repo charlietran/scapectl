@@ -73,7 +73,7 @@ func main() {
 
 	pollInterval := time.Duration(cfg.Settings.PollIntervalMS) * time.Millisecond
 	if pollInterval < 200*time.Millisecond {
-		pollInterval = time.Second
+		pollInterval = 200 * time.Millisecond
 	}
 
 	mon := monitor.New(pollInterval)

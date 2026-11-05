@@ -141,7 +141,7 @@ func (a *App) OnReady() {
 	a.applyDisplay()
 
 	// ── Receiver status ──
-	a.mReceiver = systray.AddMenuItem("Checking device status...", "")
+	a.mReceiver = systray.AddMenuItem("USB Receiver: Disconnected", "")
 	a.mReceiver.Disable()
 	a.mDongleFW = systray.AddMenuItem("", "")
 	a.mDongleFW.Disable()
@@ -349,8 +349,8 @@ func (a *App) handleMonitorEvents() {
 				a.mu.Unlock()
 			}
 
-			// Only update menu items when values change
-			if s.BoomMicConnected != a.lastMicBoom || s.Muted != a.lastMicMuted {
+			// Only update menu items when values change, or on first status after connect
+			if !wasShown || s.BoomMicConnected != a.lastMicBoom || s.Muted != a.lastMicMuted {
 				a.lastMicBoom = s.BoomMicConnected
 				a.lastMicMuted = s.Muted
 				a.updateMicStatus(s.BoomMicConnected, s.Muted)
@@ -370,14 +370,14 @@ func (a *App) handleMonitorEvents() {
 				a.updateEqCheck(s.EqSlot)
 			}
 			lightOn := s.LightSlot > 0
-			if lightOn != a.lastLightOn {
+			if !wasShown || lightOn != a.lastLightOn {
 				a.lastLightOn = lightOn
 				a.mu.Lock()
 				a.lightOn = lightOn
 				a.mu.Unlock()
 				a.updateLightStatus(lightOn)
 			}
-			if s.MNCOn != a.lastMNCOn {
+			if !wasShown || s.MNCOn != a.lastMNCOn {
 				a.lastMNCOn = s.MNCOn
 				a.mu.Lock()
 				a.mncOn = s.MNCOn
@@ -624,9 +624,9 @@ func (a *App) reloadConfig() {
 	a.mu.Lock()
 	a.cfg = cfg
 	a.mu.Unlock()
-	if a.triggers != nil {
-		a.triggers.Reload(cfg)
-	}
+	a.triggers.Reload(cfg)
+	hid.Verbose = cfg.Settings.Verbose
+	a.updateTriggersCheck()
 	a.mReload.SetTitle("Reload Config")
 	log.Printf("[tray] config reloaded (%d triggers)", len(cfg.Triggers))
 }
@@ -776,10 +776,7 @@ func (a *App) restart() {
 }
 
 func (a *App) updateTriggersCheck() {
-	a.mu.Lock()
-	on := a.cfg.Settings.TriggersEnabled
-	a.mu.Unlock()
-	if on {
+	if a.triggers.Enabled() {
 		a.mTriggers.Check()
 	} else {
 		a.mTriggers.Uncheck()
@@ -787,10 +784,8 @@ func (a *App) updateTriggersCheck() {
 }
 
 func (a *App) toggleTriggers() {
-	a.mu.Lock()
-	on := !a.cfg.Settings.TriggersEnabled
-	a.cfg.Settings.TriggersEnabled = on
-	a.mu.Unlock()
+	on := !a.triggers.Enabled()
+	a.triggers.SetEnabled(on)
 
 	if err := config.SetRawValue("triggers_enabled", fmt.Sprintf("%t", on)); err != nil {
 		log.Printf("[tray] failed to save triggers setting: %v", err)

@@ -44,6 +44,8 @@ func Enable() error {
     <true/>
     <key>KeepAlive</key>
     <false/>
+    <key>AbandonProcessGroup</key>
+    <true/>
 </dict>
 </plist>
 `, exe)

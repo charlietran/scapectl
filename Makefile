@@ -47,13 +47,12 @@ clean:
 	rm -rf $(BINARY) build
 	go clean
 
-# Build for all platforms (requires CGO cross-compilation toolchains for hidapi)
-# For pure distribution, consider using Docker or Nix.
+# Linux and Windows cross-compile without cgo; macOS needs cgo, so build it on a Mac.
 build-linux:
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-amd64 $(PKG)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-amd64 $(PKG)
 
 build-darwin:
 	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-darwin-arm64 $(PKG)
 
 build-windows:
-	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-windows-amd64.exe $(PKG)
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS) -H windowsgui" -o $(BINARY)-windows-amd64.exe $(PKG)

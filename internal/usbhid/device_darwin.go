@@ -528,6 +528,11 @@ func (d *Device) doClose() error {
 		<-d.extra.runloopDone
 	}
 
+	// Wake getInputReport so the caller's read goroutine can exit.
+	d.extra.disconnectOnce.Do(func() {
+		close(d.extra.disconnectCh)
+	})
+
 	if !disconnected {
 		if rv := _IOHIDDeviceClose(d.extra.file, d.extra.options); rv != kIOReturnSuccess {
 			return fmt.Errorf("0x%08x", rv)
