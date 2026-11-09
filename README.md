@@ -122,6 +122,8 @@ script  = "osascript -e 'display notification \"Headset disconnected\" with titl
 enabled = true
 ```
 
+`osascript` needs no install, but its notifications show the Script Editor icon. For grouping or images, use [terminal-notifier](https://github.com/julienXX/terminal-notifier) (`brew install terminal-notifier`). [alerter](https://github.com/vjeantet/alerter) also works if you want action buttons.
+
 **Windows** — uses `notify.ps1`, a small PowerShell script shipped alongside `scapectl.exe`:
 
 ```toml
@@ -252,8 +254,8 @@ Scripts receive these environment variables:
 | `SCAPE_PID`       | `0001`                               |
 | `SCAPE_PATH`      | `DevSrvsID:4295080900`               |
 | `SCAPE_TIMESTAMP` | `2026-03-21T14:30:00-07:00`          |
-| `SCAPE_JSON`      | Full event as JSON                   |
-| `SCAPE_BATTERY`   | Battery % (BatteryLevel events only) |
+| `SCAPE_JSON`      | Event, device, IDs, path and timestamp as JSON |
+| `SCAPE_BATTERY`   | Battery % (events with headset status) |
 | `SCAPE_EQ_SLOT`   | Active EQ slot, `1`-`3`              |
 | `SCAPE_EQ_DATA`   | JSON bands of the new slot (EqChanged only), see below |
 | `SCAPE_DIR`       | Directory containing the scapectl executable |
@@ -276,7 +278,7 @@ enabled  = true
 cooldown = 1
 ```
 
-The helper reads `SCAPE_EQ_DATA` and `SCAPE_EQ_SLOT` from its environment. It can render a PNG with ImageMagick and display it with [alerter](https://github.com/vjeantet/alerter): `alerter --title Scape --message "EQ slot $SCAPE_EQ_SLOT" --content-image "$image" --timeout 3`. Keep the image until alerter exits. These tools and the helper are separate from scapectl; use absolute tool paths for launch-at-login.
+The helper reads `SCAPE_EQ_DATA` and `SCAPE_EQ_SLOT` from its environment, renders a PNG, and shows it with [terminal-notifier](https://github.com/julienXX/terminal-notifier): `terminal-notifier -title Scape -message "EQ slot $SCAPE_EQ_SLOT" -group scape-eq -contentImage "$image"`. These tools and the helper are separate from scapectl; use absolute tool paths for launch-at-login.
 
 ### CLI
 
@@ -316,7 +318,7 @@ make build
 ./scapectl
 ```
 
-Requires **Go 1.22+**. No other system dependencies on any platform.
+Requires **Go 1.22+**. macOS builds also need Xcode Command Line Tools, because the tray library uses cgo there.
 
 ### Running a local build on macOS
 
@@ -332,7 +334,7 @@ ln -s "$PWD/build/ScapeCtl.app" /Applications/ScapeCtl.app
 
 ### Cross-compilation
 
-All builds are pure Go (no CGO). You can cross-compile for all 3 platforms from any of them.
+Linux and Windows builds are pure Go (`CGO_ENABLED=0`) and cross-compile from any platform. macOS builds need cgo, so build them on a Mac.
 
 ## Credits
 
@@ -506,7 +508,7 @@ Filter types: 0 Peak, 1 LowShelf, 2 HighShelf, 3 LowPass, 4 HighPass, 5 Notch, 6
 
 ### Polling & Connection Detection
 
-scapectl keeps a persistent HID connection to the dongle and polls `f1 21` every 1.5s with a 500ms timeout. It also sends `a4 0e 99` keepalive after each successful status poll.
+scapectl keeps a persistent HID connection to the dongle and polls `f1 21` every 1.5s with a 500ms timeout. It also sends `a4 0e 99` keepalive after each status poll while the connection is open.
 
 **Connection detection** uses `f1 21` byte 18 (`btConnState`) exclusively:
 

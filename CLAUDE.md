@@ -4,7 +4,7 @@
 
 scapectl is a Go system tray app + CLI for controlling the Fractal Design Scape wireless gaming headset over USB HID. It replaces the browser-only Adjust Pro web app (https://adjust.fractal-design.com) with a native desktop app that also supports script triggers on device connect/disconnect.
 
-**Status: pre-alpha / protocol discovery phase.** The HID command bytes in `internal/hid/protocol.go` are placeholders (`0x00`). They must be filled in by sniffing the Adjust Pro web app's WebHID traffic using `tools/webhid_sniffer.js`.
+**Status: working.** The core protocol is mapped in `internal/hid/protocol.go`. Use `tools/webhid_sniffer.js` to discover new commands.
 
 ## Architecture
 
@@ -12,8 +12,8 @@ scapectl is a Go system tray app + CLI for controlling the Fractal Design Scape 
 cmd/scapectl/main.go           CLI entry point + tray launcher
 internal/
   hid/protocol.go                Wire protocol constants, report builders/parsers
-  hid/device.go                  hidapi wrapper (open/send/receive via go-hid)
-  monitor/monitor.go             USB bus poller, emits connect/disconnect events
+  hid/device.go                  Device wrapper over internal/usbhid (open/send/receive)
+  monitor/monitor.go             USB bus scan + headset status poller, emits events
   triggers/triggers.go           Runs user shell scripts on device events
   usbhid/                        Inlined pure Go HID library (from rafaelmartins/usbhid)
   config/config.go               TOML config (~/.config/scapectl/config.toml)
@@ -23,18 +23,16 @@ tools/webhid_sniffer.js          Chrome DevTools script for capturing HID traffi
 
 ## Key Technical Details
 
-- **Vendor ID**: `0x36bc` (Fractal Design). Product IDs are TBD per device — the Adjust Pro Hub is `0x1001`, but the Scape dongle and wired headset have different PIDs.
-- **Transport**: The protocol uses either HID output reports (`sendReport`) or feature reports (`sendFeatureReport`). The `Transport` variable in `protocol.go` controls which path `device.go` uses. Determine which by sniffing — the sniffer logs both `TX_OUTPUT` and `TX_FEATURE`.
-- **Report size**: Assumed 64 bytes (standard full-speed USB HID). Confirm from `lsusb -v` or the WebHID `collections` object.
-- **Monitor**: Polls `hid.Enumerate()` on a timer (default 1s). No hotplug/udev listener — polling is simpler and cross-platform.
-- **Triggers**: Config-driven. Scripts get event context via env vars (`SCAPE_EVENT`, `SCAPE_DEVICE`, `SCAPE_JSON`, etc). Executed via `sh -c` on Unix, `cmd /C` on Windows.
-- **Tray**: Uses `getlantern/systray`. The tray and trigger runner both consume events from the monitor's channel.
+- **Vendor ID**: `0x36bc` (Fractal Design). The Scape dongle is PID `0x0001`; the Adjust Pro Hub is `0x1001`. The wired headset PID is still unknown.
+- **Transport**: HID output reports (`sendReport`), report ID 2, 63-byte payload. `Transport` in `protocol.go` selects the path.
+- **Monitor**: Scans the USB bus only while no device is open, then polls `f1 21` (default 1.5s). No hotplug listener.
+- **Triggers**: Config-driven. Scripts get event context via env vars (`SCAPE_EVENT`, `SCAPE_DEVICE`, `SCAPE_JSON`, etc). Executed via `sh -c` on Unix, `cmd /S /C` on Windows.
+- **Tray**: Uses `fyne.io/systray`. The tray and trigger runner both consume events from the monitor's channel.
 
 ## Build & Run
 
 ```bash
 # Prerequisites (Linux)
-sudo apt install libhidapi-dev
 sudo cp 50-fractal.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 
@@ -45,11 +43,11 @@ make run          # build + launch tray
 ./scapectl raw 01 02 # send arbitrary bytes
 ```
 
-On macOS: `brew install hidapi`. On Windows: hidapi is bundled by go-hid.
+On macOS: Xcode Command Line Tools (the tray uses cgo). On Linux and Windows: nothing extra.
 
 ## Conventions
 
-- All `TODO(sniff)` comments mark protocol bytes that need to be filled in from reverse engineering. Search for these when updating the protocol.
+- `TODO` comments in `protocol.go` mark protocol bytes still unknown. Search for these when updating the protocol.
 - The `internal/hid/protocol.go` file is the single source of truth for the wire format. Report builders return `(reportID, payload)` tuples. Parsers take `[]byte` and return typed structs.
 - Keep the CLI subcommands in `main.go` thin — they should call into `internal/` packages.
 - Config file format is TOML. The canonical example is `config.example.toml`.
@@ -59,12 +57,12 @@ On macOS: `brew install hidapi`. On Windows: hidapi is bundled by go-hid.
 
 ## Dependencies
 
-- `internal/usbhid` — Inlined pure Go HID library (from github.com/rafaelmartins/usbhid, BSD-3-Clause). Uses IOKit directly on macOS via purego for async input report callbacks. No CGO required.
+- `internal/usbhid` — Inlined pure Go HID library (from github.com/rafaelmartins/usbhid, BSD-3-Clause). Uses IOKit directly on macOS via purego for async input report callbacks.
 - `github.com/ebitengine/purego` — Pure Go syscall bridge (used by usbhid for IOKit on macOS)
 - `fyne.io/systray` — Cross-platform system tray (fork of getlantern/systray, no GTK dependency)
 - `github.com/pelletier/go-toml/v2` — TOML parser
 
-No CGO required. Cross-compilation does not need platform-specific headers.
+Linux and Windows builds need no cgo and cross-compile anywhere. macOS builds use cgo for the tray, so build them on a Mac.
 
 ## Key Architecture Notes
 

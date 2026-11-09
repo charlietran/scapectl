@@ -170,8 +170,8 @@ const defaultConfigTOML = `# scapectl configuration
 
 [settings]
 
-# How often to poll the USB bus for device changes (milliseconds).
-# Minimum: 200. Default: 1000.
+# How often to poll headset status (milliseconds). Restart after changing.
+# Minimum: 200. Default: 1500.
 poll_interval_ms = 1500
 
 # Tray icon display mode: "icon", "white", or "text".
@@ -229,8 +229,8 @@ verbose = false
 #   SCAPE_PID       Product ID in hex (e.g. "0001")
 #   SCAPE_PATH      OS device path
 #   SCAPE_TIMESTAMP ISO 8601 timestamp
-#   SCAPE_JSON      Full event as JSON
-#   SCAPE_BATTERY   Battery percentage (BatteryLevel events only)
+#   SCAPE_JSON      Event, device, IDs, path and timestamp as JSON
+#   SCAPE_BATTERY   Battery percentage (events with headset status)
 #   SCAPE_EQ_SLOT   Active EQ slot, 1-3
 #   SCAPE_EQ_DATA   JSON bands of the new slot (EqChanged only)
 #   SCAPE_DIR       Directory containing the scapectl executable
