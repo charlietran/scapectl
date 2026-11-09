@@ -26,6 +26,7 @@ import (
 
 	"fyne.io/systray"
 
+	"github.com/charlietran/scapectl/internal/audio"
 	"github.com/charlietran/scapectl/internal/config"
 	"github.com/charlietran/scapectl/internal/eq"
 	"github.com/charlietran/scapectl/internal/hid"
@@ -67,6 +68,12 @@ func main() {
 	}
 
 	// ── Tray mode (default) ──
+	closeLog, err := startDiagnostics()
+	if err != nil {
+		log.Printf("[startup] diagnostic log unavailable: %v", err)
+	} else {
+		defer closeLog()
+	}
 	cfg := config.Load()
 	config.EnsureExists()
 	hid.Verbose = cfg.Settings.Verbose
@@ -74,6 +81,14 @@ func main() {
 	pollInterval := time.Duration(cfg.Settings.PollIntervalMS) * time.Millisecond
 	if pollInterval < 200*time.Millisecond {
 		pollInterval = time.Second
+	}
+
+	log.Printf("[startup] poll_interval=%s triggers_enabled=%t verbose=%t", pollInterval, cfg.Settings.TriggersEnabled, cfg.Settings.Verbose)
+	stopAudio, err := audio.Start()
+	if err != nil {
+		log.Printf("[audio] observer unavailable: %v", err)
+	} else {
+		defer stopAudio()
 	}
 
 	mon := monitor.New(pollInterval)

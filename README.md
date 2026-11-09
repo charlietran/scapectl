@@ -102,6 +102,14 @@ Config file location:
 
 A default config with comments is created on first run. See `config.example.toml` for all options.
 
+Tray mode saves local diagnostics with UTC timestamps, even when launched at login. Logs rotate at 5 MiB and keep one backup.
+
+- macOS: `~/Library/Caches/scapectl/scapectl.log`. Other platforms use the OS user cache directory under `scapectl/`.
+- Records HID power readings, timeouts, recovery, and trigger timing, errors, and output. On macOS, also records default microphone, playback, and system-sounds device changes.
+- Includes system-default changes made manually or by other apps, but cannot identify who changed them or track an app's private device selection. No audio is recorded. Review trigger output before sharing logs.
+
+Search for `power_loss` to review suspected dropouts. Each incident records its start and outcome with duration and sample count: `recovered` means power-off was suppressed; `confirmed` means disconnected readings persisted for at least three seconds. I/O errors or invalid responses interrupt confirmation; physical dongle removal bypasses the grace period.
+
 ## Triggers
 
 Run scripts automatically on device events. Enable "Trigger Scripts" in the menu, and add `[[triggers]]` entries to your config file (see `config.example.toml` for all options).
@@ -516,4 +524,4 @@ scapectl keeps a persistent HID connection to the dongle and polls `f1 21` every
 
 The dongle also sends unsolicited `11 21` reports. The `SendAndReceive` function filters by echo bytes (first 2 bytes of the response) to match the correct reply, discarding any unsolicited reports.
 
-> **Why not use `11 21` for presence?** The Adjust Pro web app uses `11 21` byte 3 as a fast presence check before creating a headset delegate. But byte 3 is unreliable — it flaps tied to the dongle's 2.4 GHz radio polling cycle. scapectl skips `11 21` entirely and relies on `f1 21` byte 18. The tradeoff is slightly slower disconnect detection (~5s for the dongle's internal relay timeout vs instant) but zero false positives.
+> **Why not use `11 21` for presence?** The Adjust Pro web app uses `11 21` byte 3 as a fast presence check before creating a headset delegate. But byte 3 is unreliable: it flaps with the dongle's 2.4 GHz radio polling cycle. scapectl relies on `f1 21` byte 18 instead. Disconnected readings or timeouts must persist for three seconds before emitting power-off; a connected reply cancels the pending loss. Initial online readings still settle for two seconds after USB connection. Later power-on events are immediate.

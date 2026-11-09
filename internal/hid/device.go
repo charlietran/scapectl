@@ -55,6 +55,12 @@ type Device struct {
 	dev     *usbhid.Device
 	Info    DeviceInfo
 	reports chan inputReport // persistent reader goroutine feeds this
+
+	statusOutcome      string
+	statusPresence     int
+	statusPower        int
+	statusFailures     uint64
+	statusFailureSince time.Time
 }
 
 // Enumerate finds Fractal Design HID devices, returning only the
@@ -220,15 +226,62 @@ func (d *Device) GetStatus() (*DeviceStatus, error) {
 	rid, payload := BuildGetStatus()
 	resp, err := d.SendAndReceive(rid, payload, defaultTimeout)
 	if err != nil {
+		d.logStatus(resp, nil, err)
 		if err.Error() == "timeout" {
 			return &DeviceStatus{Connected: false, BatteryPercent: -1}, nil
 		}
 		return nil, err
 	}
 	if resp == nil {
+		d.logStatus(resp, nil, nil)
 		return &DeviceStatus{Connected: false, BatteryPercent: -1}, nil
 	}
-	return ParseStatus(resp), nil
+	status := ParseStatus(resp)
+	d.logStatus(resp, status, nil)
+	return status, nil
+}
+
+// logStatus records power evidence and read failures, not steady-state traffic.
+// Like GetStatus itself, it runs under the caller's HID I/O serialization.
+func (d *Device) logStatus(resp []byte, status *DeviceStatus, err error) {
+	outcome := "response"
+	switch {
+	case err != nil:
+		outcome = "error"
+		if err.Error() == "timeout" {
+			outcome = "timeout-as-disconnected"
+		}
+	case resp == nil:
+		outcome = "empty-as-disconnected"
+	case status == nil:
+		outcome = "invalid-response"
+	}
+	presence, power := -1, -1
+	if len(resp) > 18 {
+		presence = int(resp[18])
+	}
+	if len(resp) > 20 {
+		power = int(resp[20])
+	}
+	if outcome != "response" {
+		if d.statusFailures == 0 {
+			d.statusFailureSince = time.Now()
+		}
+		d.statusFailures++
+	} else if d.statusFailures > 0 {
+		log.Printf("[hid] status read recovered path=%q failures=%d elapsed=%s", d.Info.Path, d.statusFailures, time.Since(d.statusFailureSince))
+		d.statusFailures = 0
+	}
+	if outcome != d.statusOutcome || presence != d.statusPresence || power != d.statusPower {
+		if status != nil {
+			log.Printf("[hid] f1 21 path=%q outcome=%s presence_byte18=%d power_byte20=%d connected=%t raw=% x", d.Info.Path, outcome, presence, power, status.Connected, resp)
+		} else {
+			log.Printf("[hid] f1 21 path=%q outcome=%s failures=%d error=%v raw=% x", d.Info.Path, outcome, d.statusFailures, err, resp)
+		}
+	}
+	d.statusOutcome = outcome
+	d.statusPresence = presence
+	d.statusPower = power
 }
 
 // GetDongleFW queries the dongle firmware version (11 01).
