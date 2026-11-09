@@ -105,8 +105,8 @@ A default config with comments is created on first run. See `config.example.toml
 Tray mode saves local diagnostics with UTC timestamps, even when launched at login. Logs rotate at 5 MiB and keep one backup.
 
 - macOS: `~/Library/Caches/scapectl/scapectl.log`. Other platforms use the OS user cache directory under `scapectl/`.
-- Records HID power readings, timeouts, recovery, and trigger timing, errors, and output. On macOS, also records default microphone, playback, and system-sounds device changes.
-- Includes system-default changes made manually or by other apps, but cannot identify who changed them or track an app's private device selection. No audio is recorded. Review trigger output before sharing logs.
+- Records HID power readings, timeouts, recovery, and trigger timing, errors, and output.
+- No audio is recorded, and system audio-device changes are not monitored. Review trigger output before sharing logs.
 
 Search for `power_loss` to review suspected dropouts. Each incident records its start and outcome with duration and sample count: `recovered` means power-off was suppressed; `confirmed` means disconnected readings persisted for at least three seconds. I/O errors or invalid responses interrupt confirmation; physical dongle removal bypasses the grace period.
 

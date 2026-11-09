@@ -26,7 +26,6 @@ import (
 
 	"fyne.io/systray"
 
-	"github.com/charlietran/scapectl/internal/audio"
 	"github.com/charlietran/scapectl/internal/config"
 	"github.com/charlietran/scapectl/internal/eq"
 	"github.com/charlietran/scapectl/internal/hid"
@@ -84,12 +83,6 @@ func main() {
 	}
 
 	log.Printf("[startup] poll_interval=%s triggers_enabled=%t verbose=%t", pollInterval, cfg.Settings.TriggersEnabled, cfg.Settings.Verbose)
-	stopAudio, err := audio.Start()
-	if err != nil {
-		log.Printf("[audio] observer unavailable: %v", err)
-	} else {
-		defer stopAudio()
-	}
 
 	mon := monitor.New(pollInterval)
 	triggerEvents := mon.Subscribe()
