@@ -176,13 +176,6 @@ func (m *Monitor) Stop() {
 	log.Println("[monitor] stopped")
 }
 
-// Device returns the persistent HID connection, or nil if not connected.
-func (m *Monitor) Device() *hid.Device {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.dev
-}
-
 // RunCommand executes a function on the device while pausing the poll loop.
 // This prevents command interleaving with status polls.
 func (m *Monitor) RunCommand(fn func(dev *hid.Device) error) error {
@@ -195,24 +188,6 @@ func (m *Monitor) RunCommand(fn func(dev *hid.Device) error) error {
 		return fmt.Errorf("no device connected")
 	}
 	return fn(dev)
-}
-
-// KnownDevices returns paths of currently tracked devices.
-func (m *Monitor) KnownDevices() []hid.DeviceInfo {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]hid.DeviceInfo, 0, len(m.known))
-	for _, d := range m.known {
-		out = append(out, d)
-	}
-	return out
-}
-
-// HasDevices returns true if any Fractal device is connected.
-func (m *Monitor) HasDevices() bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return len(m.known) > 0
 }
 
 func (m *Monitor) poll() {
@@ -290,19 +265,6 @@ func (m *Monitor) scanBus() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for path, dev := range currentPaths {
-		if _, existed := m.known[path]; !existed {
-			log.Printf("[monitor] dongle connected: %s", dev)
-			m.known[path] = dev
-			m.headsetChecked = false
-			m.emit(Event{
-				Type:      EventDongleConnected,
-				Device:    dev,
-				Timestamp: time.Now(),
-			})
-		}
-	}
-
 	for path, dev := range m.known {
 		if _, exists := currentPaths[path]; !exists {
 			log.Printf("[monitor] dongle disconnected: %s", dev)
@@ -326,6 +288,19 @@ func (m *Monitor) scanBus() {
 			m.seenSince = time.Time{}
 			m.emit(Event{
 				Type:      EventDongleDisconnected,
+				Device:    dev,
+				Timestamp: time.Now(),
+			})
+		}
+	}
+
+	for path, dev := range currentPaths {
+		if _, existed := m.known[path]; !existed {
+			log.Printf("[monitor] dongle connected: %s", dev)
+			m.known[path] = dev
+			m.headsetChecked = false
+			m.emit(Event{
+				Type:      EventDongleConnected,
 				Device:    dev,
 				Timestamp: time.Now(),
 			})
@@ -387,11 +362,7 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 		m.statusReadErrorSince = time.Time{}
 	}
 
-	var devInfo hid.DeviceInfo
-	for _, d := range m.known {
-		devInfo = d
-		break
-	}
+	devInfo := dev.Info
 
 	now := time.Now()
 	previous, initial := m.headsetOnline, !m.headsetChecked

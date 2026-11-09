@@ -79,7 +79,7 @@ func main() {
 
 	pollInterval := time.Duration(cfg.Settings.PollIntervalMS) * time.Millisecond
 	if pollInterval < 200*time.Millisecond {
-		pollInterval = time.Second
+		pollInterval = 200 * time.Millisecond
 	}
 
 	log.Printf("[startup] poll_interval=%s triggers_enabled=%t verbose=%t", pollInterval, cfg.Settings.TriggersEnabled, cfg.Settings.Verbose)

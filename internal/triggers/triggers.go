@@ -8,7 +8,7 @@
 //	SCAPE_PID        = product ID (hex)
 //	SCAPE_PATH       = device path
 //	SCAPE_TIMESTAMP  = ISO 8601 timestamp
-//	SCAPE_BATTERY    = battery percentage (BatteryLevel events only)
+//	SCAPE_BATTERY    = battery percentage (events with headset status)
 //	SCAPE_EQ_SLOT    = active EQ slot, 1-3
 //	SCAPE_EQ_DATA    = JSON bands of the new EQ slot (EqChanged events only)
 //	SCAPE_DIR        = directory containing the scapectl executable
@@ -69,6 +69,13 @@ func (r *Runner) Enabled() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.cfg.Settings.TriggersEnabled
+}
+
+// SetEnabled turns trigger script execution on or off.
+func (r *Runner) SetEnabled(on bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cfg.Settings.TriggersEnabled = on
 }
 
 func (r *Runner) dispatch(evt monitor.Event) {
@@ -188,7 +195,7 @@ func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event, ruleIndex int)
 		"SCAPE_JSON="+string(evtJSON),
 	)
 
-	// Add battery percentage for BatteryLevel events
+	// Add battery percentage for events that carry headset status
 	if evt.Status != nil && evt.Status.BatteryPercent >= 0 {
 		env = append(env, fmt.Sprintf("SCAPE_BATTERY=%d", evt.Status.BatteryPercent))
 	}

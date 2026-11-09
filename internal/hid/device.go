@@ -193,6 +193,19 @@ func (d *Device) Read(timeout time.Duration) ([]byte, error) {
 // Responses are matched by the first 2 bytes (command echo). Unrelated
 // input reports (e.g. unsolicited dongle reports) are discarded.
 func (d *Device) SendAndReceive(reportID byte, payload []byte, timeout time.Duration) ([]byte, error) {
+	// Drop replies left over from earlier timed-out requests.
+drain:
+	for {
+		select {
+		case r := <-d.reports:
+			if r.err != nil {
+				return nil, fmt.Errorf("read: %w", r.err)
+			}
+		default:
+			break drain
+		}
+	}
+
 	if err := d.Send(reportID, payload); err != nil {
 		return nil, fmt.Errorf("send: %w", err)
 	}
