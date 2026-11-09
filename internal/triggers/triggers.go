@@ -83,9 +83,10 @@ func (r *Runner) dispatch(evt monitor.Event) {
 	defer r.mu.Unlock()
 
 	evtStr := evt.Type.String()
+	periodic := evt.Type == monitor.EventHeadsetStatus || evt.Type == monitor.EventBatteryLevel
 
 	// HeadsetStatus and BatteryLevel fire every poll — only log in verbose mode
-	if evt.Type == monitor.EventHeadsetStatus || evt.Type == monitor.EventBatteryLevel {
+	if periodic {
 		if r.cfg.Settings.Verbose {
 			log.Printf("[event] %s: %s", evtStr, evt.Device)
 		}
@@ -96,25 +97,39 @@ func (r *Runner) dispatch(evt monitor.Event) {
 	}
 
 	if !r.cfg.Settings.TriggersEnabled {
+		if !periodic {
+			log.Printf("[triggers] skipped event=%s event_time=%s event_age=%s reason=triggers-disabled", evtStr, evt.Timestamp.Format(time.RFC3339Nano), time.Since(evt.Timestamp))
+		}
 		return
 	}
 
 	now := time.Now()
-	for _, rule := range r.cfg.Triggers {
-		if !rule.Enabled {
+	matched := false
+	for index, rule := range r.cfg.Triggers {
+		if rule.Event != evtStr {
 			continue
 		}
-		if rule.Event != evtStr {
+		matched = true
+		if !rule.Enabled {
+			if !periodic {
+				log.Printf("[triggers] skipped event=%s event_time=%s event_age=%s rule=%d reason=rule-disabled", evtStr, evt.Timestamp.Format(time.RFC3339Nano), time.Since(evt.Timestamp), index+1)
+			}
 			continue
 		}
 
 		if !r.shouldFire(rule, evt, now) {
+			if !periodic {
+				log.Printf("[triggers] skipped event=%s event_time=%s event_age=%s rule=%d reason=cooldown", evtStr, evt.Timestamp.Format(time.RFC3339Nano), time.Since(evt.Timestamp), index+1)
+			}
 			continue
 		}
 
-		log.Printf("[triggers] firing '%s' for %s event", rule.Script, evtStr)
+		log.Printf("[triggers] scheduled event=%s event_time=%s event_age=%s rule=%d", evtStr, evt.Timestamp.Format(time.RFC3339Nano), time.Since(evt.Timestamp), index+1)
 
-		go r.exec(rule, evt)
+		go r.exec(rule, evt, index+1)
+	}
+	if !matched && !periodic {
+		log.Printf("[triggers] skipped event=%s event_time=%s event_age=%s reason=no-matching-rule", evtStr, evt.Timestamp.Format(time.RFC3339Nano), time.Since(evt.Timestamp))
 	}
 }
 
@@ -155,7 +170,10 @@ func (r *Runner) shouldFire(rule config.TriggerRule, evt monitor.Event, now time
 	return true
 }
 
-func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {
+func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event, ruleIndex int) {
+	started := time.Now()
+	eventTime := evt.Timestamp.Format(time.RFC3339Nano)
+	log.Printf("[triggers] started event=%s event_time=%s event_age=%s rule=%d", evt.Type, eventTime, started.Sub(evt.Timestamp), ruleIndex)
 	evtJSON, _ := json.Marshal(map[string]string{
 		"event":     evt.Type.String(),
 		"device":    evt.Device.ProductName,
@@ -200,12 +218,8 @@ func (r *Runner) exec(rule config.TriggerRule, evt monitor.Event) {
 	cmd.Env = env
 
 	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Printf("[triggers] script error '%s': %v\n  output: %s", rule.Script, err, string(output))
-	} else {
-		log.Printf("[triggers] script ok '%s'", rule.Script)
-		if len(output) > 0 {
-			log.Printf("[triggers]   output: %s", string(output))
-		}
+	log.Printf("[triggers] completed event=%s event_time=%s event_age=%s rule=%d duration=%s error=%v", evt.Type, eventTime, time.Since(evt.Timestamp), ruleIndex, time.Since(started), err)
+	if len(output) > 0 {
+		log.Printf("[triggers] output event=%s event_time=%s rule=%d output=%q", evt.Type, eventTime, ruleIndex, output)
 	}
 }

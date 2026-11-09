@@ -97,10 +97,17 @@ type Monitor struct {
 	lastRgbOn      bool        // last known RGB state
 	lastMncOn      bool        // last known MNC state
 	lastBoom       bool        // last known boom mic attachment
+
+	statusReadErrorSince time.Time
+	powerLossSince       time.Time
+	powerLossSamples     int
 }
 
-// powerSettle is how long a headset power reading must hold before it counts.
-const powerSettle = 2 * time.Second
+// Initial online readings settle after USB reconnect; power loss needs longer confirmation.
+const (
+	powerSettle    = 2 * time.Second
+	powerLossGrace = 3 * time.Second
+)
 
 // New creates a monitor that polls at the given interval.
 func New(interval time.Duration) *Monitor {
@@ -155,6 +162,7 @@ func (m *Monitor) Stop() {
 	if !m.running {
 		return
 	}
+	m.finishPowerLoss(time.Now(), "stopped")
 	close(m.stop)
 	m.running = false
 	if m.dev != nil {
@@ -260,6 +268,7 @@ func (m *Monitor) scanBus() {
 	for path, dev := range m.known {
 		if _, exists := currentPaths[path]; !exists {
 			log.Printf("[monitor] dongle disconnected: %s", dev)
+			m.finishPowerLoss(time.Now(), "dongle-disconnected")
 			delete(m.known, path)
 			if m.dev != nil {
 				m.dev.Close()
@@ -267,10 +276,12 @@ func (m *Monitor) scanBus() {
 			}
 			if m.headsetOnline {
 				m.headsetOnline = false
+				now := time.Now()
+				log.Printf("[monitor] power transition event=%s event_time=%s reason=dongle-disconnect path=%q previous=true connected=false", EventHeadsetPowerOff, now.Format(time.RFC3339Nano), dev.Path)
 				m.emit(Event{
 					Type:      EventHeadsetPowerOff,
 					Device:    dev,
-					Timestamp: time.Now(),
+					Timestamp: now,
 				})
 			}
 			m.headsetChecked = false
@@ -322,6 +333,12 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 	status, err := dev.GetStatus()
 	if err != nil {
 		m.mu.Lock()
+		m.finishPowerLoss(time.Now(), "io-error")
+		m.seenSince = time.Time{}
+		if m.statusReadErrorSince.IsZero() {
+			m.statusReadErrorSince = time.Now()
+		}
+		log.Printf("[monitor] status read failed path=%q action=close-hid-and-rescan error=%v", dev.Info.Path, err)
 		if m.dev == dev {
 			m.dev.Close()
 			m.dev = nil
@@ -330,21 +347,32 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 		return
 	}
 	if status == nil {
+		m.mu.Lock()
+		m.finishPowerLoss(time.Now(), "invalid-status")
+		m.seenSince = time.Time{}
+		m.mu.Unlock()
 		return
 	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if !m.statusReadErrorSince.IsZero() {
+		log.Printf("[monitor] status polling resumed path=%q elapsed=%s connected=%t (timeouts still return disconnected status)", dev.Info.Path, time.Since(m.statusReadErrorSince), status.Connected)
+		m.statusReadErrorSince = time.Time{}
+	}
+
 	devInfo := dev.Info
 
 	now := time.Now()
+	previous, initial := m.headsetOnline, !m.headsetChecked
 	powerChanged := m.powerChanged(status.Connected, now)
 	if powerChanged {
 		evtType := EventHeadsetPowerOn
 		if !status.Connected {
 			evtType = EventHeadsetPowerOff
 		}
+		log.Printf("[monitor] power transition event=%s event_time=%s reason=status-reading path=%q previous=%t connected=%t initial=%t", evtType, now.Format(time.RFC3339Nano), devInfo.Path, previous, status.Connected, initial)
 		m.emit(Event{
 			Type:      evtType,
 			Device:    devInfo,
@@ -464,11 +492,28 @@ func (m *Monitor) emit(evt Event) {
 	}
 }
 
-// powerChanged records a raw power reading and reports whether the headset
-// power state changed. Right after the dongle connects (e.g. a KVM switch) it
-// can report a stale state, so the first reading only counts once it has held
-// for powerSettle. Later changes count immediately. Caller holds m.mu.
+// powerChanged confirms loss for three seconds before allowing power-off triggers.
+// A connected reply cancels the pending loss. Initial online readings still settle
+// after USB reconnect, where the dongle can report stale state. Caller holds m.mu.
 func (m *Monitor) powerChanged(online bool, now time.Time) bool {
+	if !online && (!m.headsetChecked || m.headsetOnline) {
+		m.seenSince = time.Time{}
+		if m.powerLossSince.IsZero() {
+			m.powerLossSince = now
+			log.Printf("[monitor] power_loss outcome=pending incident=%s grace=%s previous_online=%t", now.Format(time.RFC3339Nano), powerLossGrace, m.headsetOnline)
+		}
+		m.powerLossSamples++
+		if now.Sub(m.powerLossSince) < powerLossGrace {
+			return false
+		}
+		m.finishPowerLoss(now, "confirmed")
+		m.headsetChecked = true
+		m.headsetOnline = false
+		return true
+	}
+	if online {
+		m.finishPowerLoss(now, "recovered")
+	}
 	if m.headsetChecked {
 		changed := online != m.headsetOnline
 		m.headsetOnline = online
@@ -485,4 +530,13 @@ func (m *Monitor) powerChanged(online bool, now time.Time) bool {
 	m.headsetChecked = true
 	m.headsetOnline = online
 	return true
+}
+
+func (m *Monitor) finishPowerLoss(now time.Time, outcome string) {
+	if m.powerLossSince.IsZero() {
+		return
+	}
+	log.Printf("[monitor] power_loss outcome=%s incident=%s duration=%s samples=%d", outcome, m.powerLossSince.Format(time.RFC3339Nano), now.Sub(m.powerLossSince), m.powerLossSamples)
+	m.powerLossSince = time.Time{}
+	m.powerLossSamples = 0
 }

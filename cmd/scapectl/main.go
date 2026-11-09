@@ -67,6 +67,12 @@ func main() {
 	}
 
 	// ── Tray mode (default) ──
+	closeLog, err := startDiagnostics()
+	if err != nil {
+		log.Printf("[startup] diagnostic log unavailable: %v", err)
+	} else {
+		defer closeLog()
+	}
 	cfg := config.Load()
 	config.EnsureExists()
 	hid.Verbose = cfg.Settings.Verbose
@@ -75,6 +81,8 @@ func main() {
 	if pollInterval < 200*time.Millisecond {
 		pollInterval = 200 * time.Millisecond
 	}
+
+	log.Printf("[startup] poll_interval=%s triggers_enabled=%t verbose=%t", pollInterval, cfg.Settings.TriggersEnabled, cfg.Settings.Verbose)
 
 	mon := monitor.New(pollInterval)
 	triggerEvents := mon.Subscribe()
