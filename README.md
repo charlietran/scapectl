@@ -75,6 +75,8 @@ macOS also requires explicit permission for the app to read USB data from the he
 
 Windows will show a **"Windows protected your PC"** SmartScreen warning. Click **More info** → **Run anyway**.
 
+The tray icon follows your Windows theme: black on a light taskbar and white on a dark taskbar. It updates within a second when you change the system theme.
+
 ### Linux
 
 A udev Required for non-root HID access:

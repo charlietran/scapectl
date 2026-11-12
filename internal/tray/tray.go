@@ -28,7 +28,7 @@ var iconFS embed.FS
 
 // iconBytes returns the embedded icon for a state ("nodongle",
 // "disconnected", "connected", "muted") and a variant ("black.png",
-// "white.png", "white.ico"). Regenerate with python3 icons/states/gen.py install.
+// "white.png", "black.ico", "white.ico"). Regenerate with python3 icons/states/gen.py.
 func iconBytes(state, variant string) []byte {
 	b, err := iconFS.ReadFile("icons/" + state + "_" + variant)
 	if err != nil {
@@ -36,6 +36,9 @@ func iconBytes(state, variant string) []byte {
 	}
 	return b
 }
+
+// Windows installs the reader; other platforms use native or fixed icon colors.
+var readTaskbarTheme func() (light bool, err error)
 
 // clickCh returns the ClickedCh for a menu item, or nil if the item is nil.
 // A nil channel is never selected in a select statement.
@@ -93,6 +96,7 @@ type App struct {
 	headsetShown  bool   // true after headset controls have been shown
 	iconState     string // "nodongle", "disconnected", "connected" or "muted"
 	animSeq       uint64 // bumped per state change to cancel a running animation
+	lightTaskbar  bool
 	mEqParent     *systray.MenuItem
 	mEq           [3]*systray.MenuItem
 	mLightTog     *systray.MenuItem
@@ -138,6 +142,9 @@ func New(cfg *config.Config, mon *monitor.Monitor, tr *triggers.Runner, events <
 // OnReady is called by systray when the tray icon is ready.
 func (a *App) OnReady() {
 	systray.SetTooltip("Scape Control")
+	if readTaskbarTheme != nil {
+		a.lightTaskbar, _ = readTaskbarTheme()
+	}
 	a.applyDisplay()
 
 	// ── Receiver status ──
@@ -217,8 +224,26 @@ func (a *App) OnExit() {
 }
 
 func (a *App) handleClicks() {
+	var themeTicks <-chan time.Time
+	if readTaskbarTheme != nil {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		themeTicks = ticker.C
+	}
 	for {
 		select {
+		case <-themeTicks:
+			light, err := readTaskbarTheme()
+			if err != nil {
+				continue // Keep the last known theme if the registry is unavailable.
+			}
+			a.mu.Lock()
+			changed := light != a.lightTaskbar
+			a.lightTaskbar = light
+			a.mu.Unlock()
+			if changed {
+				a.applyDisplay()
+			}
 		case <-a.mEq[0].ClickedCh:
 			a.setEq(1)
 		case <-a.mEq[1].ClickedCh:
@@ -667,10 +692,10 @@ func (a *App) setIconState(state string) {
 
 func (a *App) applyDisplay() {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	mode := effectiveMode(a.cfg.Settings.TrayDisplay)
 	text := a.cfg.Settings.TrayText
 	state := a.iconState
-	a.mu.Unlock()
 	if state == "" {
 		state = "nodongle"
 	}
@@ -689,7 +714,11 @@ func (a *App) applyDisplay() {
 			b := iconBytes(state, "black.png")
 			systray.SetTemplateIcon(b, b)
 		case "windows":
-			systray.SetIcon(iconBytes(state, "white.ico"))
+			variant := "white.ico"
+			if a.lightTaskbar {
+				variant = "black.ico"
+			}
+			systray.SetIcon(iconBytes(state, variant))
 		default:
 			systray.SetIcon(iconBytes(state, "white.png"))
 		}
