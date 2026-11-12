@@ -2,7 +2,7 @@
 """Generate the tray icon states into internal/tray/icons/.
 
 Draws the headset-on-dock silhouette from primitives and writes black
-(macOS template) and white (Linux) PNGs plus white multi-size ICOs (Windows).
+(macOS template) and white (Linux) PNGs plus black and white multi-size ICOs (Windows).
 Needs rsvg-convert and ImageMagick. Run: python3 icons/states/gen.py
 """
 import os, subprocess, tempfile
@@ -58,6 +58,7 @@ with tempfile.TemporaryDirectory() as tmp:
         white = os.path.join(DST, f"{state}_white.png")
         subprocess.run(["rsvg-convert", "-w", "64", "-h", "64", "-o", black, src], check=True)
         subprocess.run(["magick", black, "-channel", "RGB", "-negate", white], check=True)
-        subprocess.run(["magick", white, "-define", "icon:auto-resize=64,48,32,16",
-                        os.path.join(DST, f"{state}_white.ico")], check=True)
+        for color, png in (("black", black), ("white", white)):
+            subprocess.run(["magick", png, "-define", "icon:auto-resize=64,48,32,16",
+                            os.path.join(DST, f"{state}_{color}.ico")], check=True)
 print("ok")
