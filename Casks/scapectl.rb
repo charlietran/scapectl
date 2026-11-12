@@ -1,5 +1,5 @@
 cask "scapectl" do
-  version "0.0.18"
+  version "0.0.19"
   sha256 :no_check
 
   url "https://github.com/charlietran/scapectl/releases/download/v#{version}/Mac_ScapeCtl.zip"
