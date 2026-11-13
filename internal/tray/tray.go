@@ -797,7 +797,7 @@ func (a *App) restart() {
 	cmd := exec.Command(exe)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
+	if err := startRestart(cmd); err != nil {
 		log.Printf("[tray] failed to restart: %v", err)
 		return
 	}
