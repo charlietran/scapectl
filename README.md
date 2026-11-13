@@ -92,6 +92,8 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 The app is meant to be simple menu interface for seeing the status of the headphones and easily toggling some of its features. You may also configure it to run scripts upon certain events, to automate things like switching the audio device when the headphones are docked and undocked.
 
+Changing **Tray Display** between an icon and text restarts the app. On macOS, this also works with older **Launch at Login** settings.
+
 > [!IMPORTANT]
 > scapectl cannot be used at the same time as Fractal's [Adjust Pro](https://adjust.fractal-design.com) web app. Both talk to the dongle over the same USB HID stream and will fight over responses, leaving both in an inconsistent state. Close the Adjust Pro tab (and quit its offline Electron app if you have it) before launching scapectl, and likewise close scapectl first if you need to use the Adjust Pro web app.
 
