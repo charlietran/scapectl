@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charlietran/scapectl/internal/hid"
 )
 
 func TestPowerLossConfirmation(t *testing.T) {
@@ -126,5 +128,44 @@ func TestStopFinishesPendingPowerLoss(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "outcome=stopped") || !strings.Contains(output.String(), "samples=1") {
 		t.Fatalf("shutdown did not record the interrupted incident: %s", output.String())
+	}
+}
+
+func TestUnknownStatusPreservesPowerAndRestartsConfirmation(t *testing.T) {
+	for _, initial := range []bool{false, true} {
+		for _, err := range []error{hid.ErrTimeout, nil} {
+			m := New(time.Second)
+			dev := &hid.Device{}
+			m.dev = dev
+			m.headsetChecked, m.headsetOnline = !initial, !initial
+			events := m.Subscribe()
+
+			// An unknown read must break even an overdue offline confirmation.
+			m.powerChanged(false, time.Now().Add(-time.Hour))
+			for range 10 {
+				m.applyHeadsetStatus(dev, nil, err)
+			}
+			m.applyHeadsetStatus(dev, &hid.DeviceStatus{Connected: false}, nil)
+			if m.headsetOnline != !initial || m.headsetChecked != !initial || m.dev != dev {
+				t.Fatalf("unknown status changed power or closed HID: initial=%t err=%v", initial, err)
+			}
+			select {
+			case event := <-events:
+				t.Fatalf("unknown status triggered %s", event.Type)
+			default:
+			}
+
+			// Explicit offline replies can still complete a fresh confirmation.
+			m.powerLossSince = time.Now().Add(-powerLossGrace)
+			m.applyHeadsetStatus(dev, &hid.DeviceStatus{Connected: false}, nil)
+			select {
+			case event := <-events:
+				if event.Type != EventHeadsetPowerOff {
+					t.Fatalf("want power off, got %s", event.Type)
+				}
+			default:
+				t.Fatal("confirmed offline reply did not emit power off")
+			}
+		}
 	}
 }

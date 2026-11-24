@@ -3,6 +3,7 @@
 package monitor
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -331,6 +332,17 @@ func (m *Monitor) ensureConnected() {
 
 func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 	status, err := dev.GetStatus()
+	m.applyHeadsetStatus(dev, status, err)
+}
+
+func (m *Monitor) applyHeadsetStatus(dev *hid.Device, status *hid.DeviceStatus, err error) {
+	if errors.Is(err, hid.ErrTimeout) {
+		m.mu.Lock()
+		m.finishPowerLoss(time.Now(), "timeout-unknown")
+		m.seenSince = time.Time{}
+		m.mu.Unlock()
+		return
+	}
 	if err != nil {
 		m.mu.Lock()
 		m.finishPowerLoss(time.Now(), "io-error")
@@ -358,7 +370,7 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 	defer m.mu.Unlock()
 
 	if !m.statusReadErrorSince.IsZero() {
-		log.Printf("[monitor] status polling resumed path=%q elapsed=%s connected=%t (timeouts still return disconnected status)", dev.Info.Path, time.Since(m.statusReadErrorSince), status.Connected)
+		log.Printf("[monitor] status polling resumed path=%q elapsed=%s connected=%t", dev.Info.Path, time.Since(m.statusReadErrorSince), status.Connected)
 		m.statusReadErrorSince = time.Time{}
 	}
 
