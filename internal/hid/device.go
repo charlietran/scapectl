@@ -232,11 +232,12 @@ drain:
 
 const defaultTimeout = 500 * time.Millisecond
 
-// ErrTimeout means no matching reply arrived; it does not establish headset power.
+// ErrTimeout means no matching reply arrived. The dongle goes silent when the
+// headset powers off, but a single timeout can also be a brief stall.
 var ErrTimeout = errors.New("timeout")
 
 // GetStatus sends f1 21 and parses the status blob (battery, connection, etc.).
-// Missing replies leave power unknown and return an error.
+// Missing replies return ErrTimeout; callers decide what sustained silence means.
 func (d *Device) GetStatus() (*DeviceStatus, error) {
 	rid, payload := BuildGetStatus()
 	resp, err := d.SendAndReceive(rid, payload, defaultTimeout)

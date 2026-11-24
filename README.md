@@ -112,7 +112,7 @@ Tray mode saves local diagnostics with UTC timestamps, even when launched at log
 - Records HID power readings, timeouts, recovery, and trigger timing, errors, and output.
 - No audio is recorded, and system audio-device changes are not monitored. Review trigger output before sharing logs.
 
-Search for `power_loss` to review suspected dropouts. Each incident records its start and outcome with duration and sample count: `recovered` means power-off was suppressed; `confirmed` means disconnected readings persisted for at least three seconds. Timeouts, I/O errors, or invalid responses interrupt confirmation; physical dongle removal bypasses the grace period.
+Search for `power_loss` to review suspected dropouts. Each incident records its start and outcome with duration and sample count: `recovered` means power-off was suppressed; `confirmed` means disconnected readings or steady timeouts persisted for three seconds (ten within a minute of HID errors or a recovered dropout, shown as `grace=10s`). I/O errors or invalid responses interrupt confirmation; physical dongle removal bypasses the grace period.
 
 ## Triggers
 
@@ -526,9 +526,9 @@ scapectl keeps a persistent HID connection to the dongle and polls `f1 21` every
 
 - **Headset online:** `f1 21` returns within ~60ms, byte 18 = 1
 - **Headset offline:** a valid `f1 21` response reports byte 18 = 0
-- **Headset unknown:** status requests time out; the last known state and audio routing stay unchanged. If powering off only stops replies, automatic audio restoration waits for an explicit offline reply or dongle removal.
+- **Headset silent:** status requests time out. The dongle stops replying when the headset powers off, so steady timeouts count as offline. Replies also stall during use, but those stalls come with HID errors, brief dropouts and polls seconds apart. Within a minute of such trouble, silence must last ten seconds instead of three, and polls stuck behind slow writes never count.
 - **Dongle unplugged:** HID I/O error closes the connection; next tick re-enumerates the USB bus
 
 The dongle also sends unsolicited `11 21` reports. The `SendAndReceive` function filters by echo bytes (first 2 bytes of the response) to match the correct reply, discarding any unsolicited reports.
 
-> **Why not use `11 21` for presence?** The Adjust Pro web app uses `11 21` byte 3 as a fast presence check before creating a headset delegate. But byte 3 is unreliable: it flaps with the dongle's 2.4 GHz radio polling cycle. scapectl relies on `f1 21` byte 18 instead. Explicit disconnected readings must persist for three seconds before emitting power-off; a connected reply cancels the pending loss. Timeouts are unknown, not disconnected. Initial online readings still settle for two seconds after USB connection. Later power-on events are immediate.
+> **Why not use `11 21` for presence?** The Adjust Pro web app uses `11 21` byte 3 as a fast presence check before creating a headset delegate. But byte 3 is unreliable: it flaps with the dongle's 2.4 GHz radio polling cycle. scapectl relies on `f1 21` byte 18 instead. Offline readings must persist for three seconds before emitting power-off (ten for silence after link trouble); a connected reply cancels the pending loss. Initial online readings still settle for two seconds after USB connection. Later power-on events are immediate.
