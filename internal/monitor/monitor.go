@@ -3,6 +3,7 @@
 package monitor
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -101,12 +102,18 @@ type Monitor struct {
 	statusReadErrorSince time.Time
 	powerLossSince       time.Time
 	powerLossSamples     int
+	linkTroubleAt        time.Time // last HID error or false power-loss alarm while online
 }
 
 // Initial online readings settle after USB reconnect; power loss needs longer confirmation.
+// The dongle goes silent when the headset powers off. Replies can also stall during use,
+// but those stalls come with HID errors or brief false alarms, so after link trouble,
+// silence needs a longer grace.
 const (
-	powerSettle    = 2 * time.Second
-	powerLossGrace = 3 * time.Second
+	powerSettle       = 2 * time.Second
+	powerLossGrace    = 3 * time.Second
+	troubledLossGrace = 10 * time.Second
+	linkTroubleMemory = time.Minute
 )
 
 // New creates a monitor that polls at the given interval.
@@ -331,9 +338,18 @@ func (m *Monitor) ensureConnected() {
 
 func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 	status, err := dev.GetStatus()
+	m.applyHeadsetStatus(dev, status, err)
+}
+
+func (m *Monitor) applyHeadsetStatus(dev *hid.Device, status *hid.DeviceStatus, err error) {
+	silent := errors.Is(err, hid.ErrTimeout)
+	if silent {
+		status, err = &hid.DeviceStatus{BatteryPercent: -1}, nil
+	}
 	if err != nil {
 		m.mu.Lock()
 		m.finishPowerLoss(time.Now(), "io-error")
+		m.linkTroubleAt = time.Now()
 		m.seenSince = time.Time{}
 		if m.statusReadErrorSince.IsZero() {
 			m.statusReadErrorSince = time.Now()
@@ -358,7 +374,7 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 	defer m.mu.Unlock()
 
 	if !m.statusReadErrorSince.IsZero() {
-		log.Printf("[monitor] status polling resumed path=%q elapsed=%s connected=%t (timeouts still return disconnected status)", dev.Info.Path, time.Since(m.statusReadErrorSince), status.Connected)
+		log.Printf("[monitor] status polling resumed path=%q elapsed=%s connected=%t", dev.Info.Path, time.Since(m.statusReadErrorSince), status.Connected)
 		m.statusReadErrorSince = time.Time{}
 	}
 
@@ -366,7 +382,7 @@ func (m *Monitor) pollHeadsetStatus(dev *hid.Device) {
 
 	now := time.Now()
 	previous, initial := m.headsetOnline, !m.headsetChecked
-	powerChanged := m.powerChanged(status.Connected, now)
+	powerChanged := m.powerChanged(status.Connected, silent, now)
 	if powerChanged {
 		evtType := EventHeadsetPowerOn
 		if !status.Connected {
@@ -492,18 +508,29 @@ func (m *Monitor) emit(evt Event) {
 	}
 }
 
-// powerChanged confirms loss for three seconds before allowing power-off triggers.
-// A connected reply cancels the pending loss. Initial online readings still settle
-// after USB reconnect, where the dongle can report stale state. Caller holds m.mu.
-func (m *Monitor) powerChanged(online bool, now time.Time) bool {
+// powerChanged confirms loss before allowing power-off triggers: three seconds of
+// offline replies or steady silence, or ten seconds of silence within a minute of link
+// trouble. A connected reply cancels the pending loss. Initial online readings still
+// settle after USB reconnect, where the dongle can report stale state. Caller holds m.mu.
+func (m *Monitor) powerChanged(online, silent bool, now time.Time) bool {
 	if !online && (!m.headsetChecked || m.headsetOnline) {
+		grace, cadence := powerLossGrace, time.Duration(0)
+		if silent {
+			if !m.linkTroubleAt.IsZero() && now.Sub(m.linkTroubleAt) < linkTroubleMemory {
+				grace = troubledLossGrace
+			}
+			// Stalled polls also time out, but far apart; real silence keeps the poll
+			// cadence, which the 500ms reply timeout bounds. Require half that cadence.
+			cadence = 2 * max(m.interval, 500*time.Millisecond)
+		}
 		m.seenSince = time.Time{}
 		if m.powerLossSince.IsZero() {
 			m.powerLossSince = now
-			log.Printf("[monitor] power_loss outcome=pending incident=%s grace=%s previous_online=%t", now.Format(time.RFC3339Nano), powerLossGrace, m.headsetOnline)
+			log.Printf("[monitor] power_loss outcome=pending incident=%s grace=%s previous_online=%t silent=%t", now.Format(time.RFC3339Nano), grace, m.headsetOnline, silent)
 		}
 		m.powerLossSamples++
-		if now.Sub(m.powerLossSince) < powerLossGrace {
+		elapsed := now.Sub(m.powerLossSince)
+		if elapsed < grace || (cadence > 0 && m.powerLossSamples < int(elapsed/cadence)) {
 			return false
 		}
 		m.finishPowerLoss(now, "confirmed")
@@ -512,6 +539,9 @@ func (m *Monitor) powerChanged(online bool, now time.Time) bool {
 		return true
 	}
 	if online {
+		if !m.powerLossSince.IsZero() && m.headsetChecked && m.headsetOnline {
+			m.linkTroubleAt = now
+		}
 		m.finishPowerLoss(now, "recovered")
 	}
 	if m.headsetChecked {

@@ -223,7 +223,7 @@ drain:
 			}
 			// Not our response — discard and keep waiting
 		case <-deadline:
-			return nil, errors.New("timeout")
+			return nil, ErrTimeout
 		}
 	}
 }
@@ -232,22 +232,18 @@ drain:
 
 const defaultTimeout = 500 * time.Millisecond
 
+// ErrTimeout means no matching reply arrived. The dongle goes silent when the
+// headset powers off, but a single timeout can also be a brief stall.
+var ErrTimeout = errors.New("timeout")
+
 // GetStatus sends f1 21 and parses the status blob (battery, connection, etc.).
-// A timeout means the headset is unreachable (off/out of range) — returned as
-// a disconnected status, not an error.
+// Missing replies return ErrTimeout; callers decide what sustained silence means.
 func (d *Device) GetStatus() (*DeviceStatus, error) {
 	rid, payload := BuildGetStatus()
 	resp, err := d.SendAndReceive(rid, payload, defaultTimeout)
 	if err != nil {
 		d.logStatus(resp, nil, err)
-		if err.Error() == "timeout" {
-			return &DeviceStatus{Connected: false, BatteryPercent: -1}, nil
-		}
 		return nil, err
-	}
-	if resp == nil {
-		d.logStatus(resp, nil, nil)
-		return &DeviceStatus{Connected: false, BatteryPercent: -1}, nil
 	}
 	status := ParseStatus(resp)
 	d.logStatus(resp, status, nil)
@@ -261,11 +257,11 @@ func (d *Device) logStatus(resp []byte, status *DeviceStatus, err error) {
 	switch {
 	case err != nil:
 		outcome = "error"
-		if err.Error() == "timeout" {
-			outcome = "timeout-as-disconnected"
+		if errors.Is(err, ErrTimeout) {
+			outcome = "timeout-unknown"
 		}
 	case resp == nil:
-		outcome = "empty-as-disconnected"
+		outcome = "empty-unknown"
 	case status == nil:
 		outcome = "invalid-response"
 	}
